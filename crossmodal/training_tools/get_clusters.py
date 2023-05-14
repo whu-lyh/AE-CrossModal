@@ -32,6 +32,7 @@ Initialises NetVLAD clusters before training.
 from math import ceil
 from os.path import join, exists
 from os import makedirs
+import sys
 import torch
 import torch.nn.functional as F
 import h5py
@@ -39,7 +40,9 @@ import faiss
 import numpy as np
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from tqdm.auto import tqdm
-from crossmodal.training_tools.msls import ImagesFromList
+
+#sys.path.append('../../')
+from mycode.msls import ImagesFromList
 from crossmodal.tools.datasets import input_transform
 
 

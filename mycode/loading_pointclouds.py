@@ -21,14 +21,11 @@ def get_sets_dict(filename):
         print("Trajectories Loaded.")
         return trajectories
 
-
 def load_pc_file(filename):
-    # returns Nx3 matrix
-    # print("filename")
-    # print(filename)
+    # returns Nx3 matrix from a .bin file
+    # print("filename", filename)
     pc = np.fromfile(os.path.join('', filename), dtype=np.float32) # roc edit 64->32
-    # print('len(pc)')
-    # print(len(pc))
+    # print('len(pc)', len(pc))
     # if(len(pc) == 0):
     #     print(filename)
     #     return np.array([])
@@ -37,19 +34,18 @@ def load_pc_file(filename):
         print("Error in pointcloud shape")
         return np.array([])'''
     pc = np.reshape(pc, [-1, 4])
+    # randomly select 4096 points here which means that 
+    # the input preprocess ground-removal pc should be correct as soon as possible
     n = np.random.choice(len(pc), 4096, replace=False)
     pc = pc[n]
-
-    '''if(pc.shape[0] != 4096*4):
-        print("Error in pointcloud shape")
-        return np.array([])
-
-    pc = np.reshape(pc,(pc.shape[0]//4, 4))'''
-    pc=pc[:, :3]
+    # only xyz is used here
+    pc = pc[:, :3]
     return pc
 
-
 def load_pc_files(filenames):
+    '''
+    load point cloud from a branch of files, merge all into one single file
+    '''
     pcs = []
     for filename in filenames:
         # print(filename)
@@ -61,7 +57,6 @@ def load_pc_files(filenames):
     pcs = np.array(pcs)
     # pcs = tuple(pcs)
     return pcs
-
 
 def rotate_point_cloud(batch_data):
     """ Randomly rotate the point clouds to augument the dataset
@@ -86,7 +81,6 @@ def rotate_point_cloud(batch_data):
             shape_pc.reshape((-1, 3)), rotation_matrix)
     return rotated_data
 
-
 def jitter_point_cloud(batch_data, sigma=0.005, clip=0.05):
     """ Randomly jitter points. jittering is per point.
         Input:
@@ -99,7 +93,6 @@ def jitter_point_cloud(batch_data, sigma=0.005, clip=0.05):
     jittered_data = np.clip(sigma * np.random.randn(B, N, C), -1*clip, clip)
     jittered_data += batch_data
     return jittered_data
-
 
 def get_query_tuple(dict_value, num_pos, num_neg, QUERY_DICT, hard_neg=[], other_neg=False):
         # get query tuple for dictionary entry

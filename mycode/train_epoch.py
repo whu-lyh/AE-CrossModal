@@ -17,10 +17,10 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
     train_dataset.new_epoch()
 
     epoch_loss = 0
-    # epoch_loss_je = 0
     startIter = 1  # keep track of batch iter across subsets for logging
 
     nBatches = (len(train_dataset.qIdx) + int(config['train']['batchsize']) - 1) // int(config['train']['batchsize'])
+    print('nBatches:\t', nBatches)
 
     for subIter in trange(train_dataset.nCacheSubset, desc='Cache refresh'.rjust(15), position=1):
         '''pool_size = encoder_dim
@@ -29,10 +29,8 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
         pool_size = 256
 
         tqdm.write('====> Building Cache')
-# original code
-        '''train_dataset.update_subcache(model, pool_size)'''
-# mycode
         train_dataset.update_subcache(net=None, net3d=None, outputdim=pool_size)
+
         training_data_loader = DataLoader(dataset=train_dataset, num_workers=opt.threads,
                                           batch_size=int(config['train']['batchsize']), shuffle=True,
                                           collate_fn=MSLS.collate_fn, pin_memory=cuda) #
@@ -50,9 +48,9 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
             # where N = batchSize * (nQuery + nPos + nNeg)
             if query is None:
                 continue  # in case we get an empty batch
-# original code
-#             B, C, H, W = query.shape
+
             B = query.shape[0]
+
             if debug:
                 batch1 = {}
                 batch1['query'] = train_dataset.qImages[indices[0]][-14:]
@@ -62,12 +60,12 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
                 print(batch1)
                 # print('batch2')
                 # print(batch2)
+
             nNeg = torch.sum(negCounts)
             data2d_input = torch.cat([query, positives, negatives])
 
             data2d_input = data2d_input.to(device)
             image_encoding = model.encoder(data2d_input)
-
             vlad2d_encoding = model.pool(image_encoding)
 
             vladQ, vladP, vladN = torch.split(vlad2d_encoding, [B, B, B*5])
@@ -81,7 +79,7 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
                 (query_pc, positives_pc, negatives_pcs), 1)
             feed_tensor = feed_tensor.view((-1, 1, 4096, 3))
             feed_tensor.requires_grad_(True)
-#point process
+
             feed_tensor = feed_tensor.to(device)
             output = model3d(feed_tensor)
             # print('output.size')
@@ -92,9 +90,6 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
             output_query = output_query.view(-1, 256)
             output_positives = output_positives.view(-1, 256)
             output_negatives = output_negatives.contiguous().view(-1, 256)
-
-            '''optimizer.zero_grad()
-            optimizer3d.zero_grad()'''
 
             # calculate loss for each Query, Positive, Negative triplet
             # due to potential difference in number of negatives have to
@@ -122,30 +117,31 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
                         print('loss_recode:')
                         print(loss_recode)
                         print('')
+
             loss_sm = loss_2dto2d + loss_3dto3d
             loss_cm = loss_2dto3d + loss_3dto2d
             loss = 0.1 * loss_sm + loss_cm + loss_je
+
             if debug:
                 loss_dic['je'] = loss_je.data
                 loss_dic['cm'] = loss_cm.data
                 loss_dic['sm'] = loss_sm.data
                 print('loss_dic')
                 print(loss_dic)
+
             loss /= nNeg.float().to(device)  # normalise by actual number of negatives
             loss_je_t = loss_je / nNeg.float().to(device) # normalise by actual number of negatives negCounts
             loss_cm_t = loss_cm / nNeg.float().to(device)
 
             loss = loss / accum_steps
             loss.backward()
+
             if (iteration + 1) % accum_steps == 0 or (iteration + 1) == len(training_data_loader):
                 optimizer.step()
                 optimizer.zero_grad()
                 optimizer3d.step()
                 optimizer3d.zero_grad()
-#original code
-            # del data_input, image_encoding, vlad_encoding, vladQ, vladP, vladN
-            # del query, positives, negatives
-# my code
+
             del data2d_input, feed_tensor, output, image_encoding, vlad2d_encoding, vladQ, vladP, vladN, output_query, output_positives, output_negatives
             # del attention
             del query, query_pc, positives, positives_pc, negatives, negatives_pcs

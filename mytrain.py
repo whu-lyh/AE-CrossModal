@@ -40,41 +40,44 @@ if __name__ == "__main__":
 
     parser.add_argument('--config_path', type=str, default='crossmodal/configs/train.ini',
                         help='File name (with extension) to an ini file that stores most of the configuration data')
-    parser.add_argument('--cache_path', type=str, default='/data/zzp/cache',
+    parser.add_argument('--cache_path', type=str, default='/data-lyh/KITTI360/cache',
                         help='Path to save cache, centroid data to.')
-    parser.add_argument('--save_path', type=str, default='/data/zzp/result',
+    parser.add_argument('--save_path', type=str, default='/log/checkpoints',
                         help='Path to save checkpoints to')
     parser.add_argument('--resume_path2d', type=str, default='',
-                        help='Full path and name (with extension) to load checkpoint from, for resuming training.') # /home/zhipengz/result2/Aug26_15-48-13_vgg_clu64_4/checkpoints/model_best.pth.tar
-    parser.add_argument('--pretrained_path3d', type=str, default='',
-                        help='Full path and name (with extension) to load checkpoint from, for 3d pretrained.') # /home/zhipengz/result2/Aug26_15-48-13_vgg_clu64_4/checkpoints3d/model_best.ckpt
+                        help='Full path and name (with extension) to load checkpoint from, for 2d resuming training.') # /home/zhipengz/result2/Aug26_15-48-13_vgg_clu64_4/checkpoints/model_best.pth.tar
+    parser.add_argument('--resume_path3d', type=str, default='',
+                        help='Full path and name (with extension) to load checkpoint from, for 3d resuming training.') # /home/zhipengz/result2/Aug26_15-48-13_vgg_clu64_4/checkpoints3d/model_best.ckpt
     parser.add_argument('--cluster_path', type=str, default='',
                         help='Full path and name (with extension) to load cluster data from, for resuming training.')# /data/zzp/cache/centroids/vgg_20m_KITTI360_64_desc_cen.hdf5
-    parser.add_argument('--dataset_root_dir', type=str, default='/data/kitti360',
+    parser.add_argument('--dataset_root_dir', type=str, default='/data-lyh/KITTI360',
                         help='Root directory of dataset')
     parser.add_argument('--id', type=str, default='vgg',
                         help='Description of this model, e.g. vgg16_netvlad')
-    parser.add_argument('--nEpochs', type=int, default=50, help='number of epochs to train for')
+    parser.add_argument('--nEpochs', type=int, default=50, 
+                        help='number of epochs to train for')
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='manual epoch number (useful on restarts)')
-    parser.add_argument('--save_every_epoch', action='store_true', help='Flag to set a separate checkpoint file for each new epoch')
-    parser.add_argument('--threads', type=int, default=6, help='Number of threads for each data loader to use')
-    parser.add_argument('--nocuda', action='store_true', help='If true, use CPU only. Else use GPU.')
-    parser.add_argument('--network', type=str, default='vgg', help='2D CNN network, e.g. vgg')
-    parser.add_argument('--pretrained_cnn_network', type=bool, default=True, help='whether use pretrained 2D CNN network ')
+    parser.add_argument('--save_every_epoch', action='store_true', 
+                        help='Flag to set a separate checkpoint file for each new epoch')
+    parser.add_argument('--threads', type=int, default=0, 
+                        help='Number of threads for each data loader to use')
+    parser.add_argument('--nocuda', action='store_true', 
+                        help='If true, use CPU only. Else use GPU.')
+    parser.add_argument('--network', type=str, default='vgg', 
+                        help='2D CNN network, e.g. vgg')
+    parser.add_argument('--pretrained_cnn_network', type=bool, default=True, 
+                        help='whether use pretrained 2D CNN network')
 
     opt = parser.parse_args()
     print(opt)
-    print('os.environ[CUDA_VISIBLE_DEVICES]')
-    print(os.environ['CUDA_VISIBLE_DEVICES'])
+    print('os.environ[CUDA_VISIBLE_DEVICES]:\t',os.environ['CUDA_VISIBLE_DEVICES'])
     size = 512
-    attention = False
-    print('size')
-    print(size)
-    print('attention')
-    print(attention)
-    print(opt.network)
-
+    attention = True #False
+    print('size:\t',size)
+    print('attention:\t',attention)
+    print('Current 2D CNN network:\t',opt.network)
+    # load basic train parameters
     configfile = opt.config_path
     assert os.path.isfile(configfile)
     config = configparser.ConfigParser()
@@ -99,17 +102,17 @@ if __name__ == "__main__":
     print('===> Building 2d model')
     # feature extract network
     pre = opt.pretrained_cnn_network
-    print('pretrained_cnn:')
-    print(pre)
+    print('whether use pretrained 2D CNN network:\t', opt.pretrained_cnn_network)
+
     if opt.network == 'spherical':
         encoder = sphere_resnet18(pretrained=pre)
         encoder_dim = 512
         # sphe = True
         # encoder_dim, encoder = get_spherical_cnn(network='original')  # TODO: freeze pretrained
     elif opt.network == 'resnet':
-        encoder_dim, encoder = get_backend(net='resnet', pre=pre) #resnet
+        encoder_dim, encoder = get_backend(net='resnet', pre=pre) # resnet
     elif opt.network == 'vgg':
-        encoder_dim, encoder = get_backend(net='vgg', pre=pre) #resnet
+        encoder_dim, encoder = get_backend(net='vgg', pre=pre) # vgg
     else:
         raise ValueError('Unknown cnn network')
 
@@ -131,13 +134,11 @@ if __name__ == "__main__":
     else:  # if not, assume fresh training instance and will initially generate cluster centroids
         print('===> Loading model')
         config['global_params']['num_clusters'] = config['train']['num_clusters']
-
         # model = get_model(encoder, encoder_dim, config['global_params'], append_pca_layer=False)
         model = get_model_netvlad(encoder, encoder_dim, config['global_params'], attention=attention)
-
-        initcache = join(opt.cache_path, 'centroids', opt.network + '_20m_KITTI360_' + config['train'][
-            'num_clusters'] + '_desc_cen.hdf5')
-
+        # so what this cluster used for? code similar to Patch-NetVLAD code
+        initcache = join(opt.cache_path, 'centroids', opt.network + '_20m_KITTI360_' + config['train']['num_clusters'] + '_desc_cen.hdf5')
+        print('initcache:\t', initcache)
         if opt.cluster_path:
             if isfile(opt.cluster_path):
                 if opt.cluster_path != initcache:
@@ -146,17 +147,13 @@ if __name__ == "__main__":
                 raise FileNotFoundError("=> no cluster data found at '{}'".format(opt.cluster_path))
         else:
             print('===> Finding cluster centroids')
-
             print('===> Loading dataset(s) for clustering')
-            train_dataset = MSLS(opt.dataset_root_dir, mode='test', cities='train', transform=input_transform(size, train=False),
-                                 bs=int(config['train']['cachebatchsize']), threads=opt.threads,
-                                 margin=float(config['train']['margin']))
+            train_dataset = MSLS(opt.dataset_root_dir, mode='train', transform=input_transform(size, train=False),
+                                 bs=int(config['train']['cachebatchsize']), threads=opt.threads,margin=float(config['train']['margin']))
 
             model = model.to(device)
-
             print('===> Calculating descriptors and clusters')
             get_clusters(train_dataset, model, encoder_dim, device, opt, config, initcache, size)
-
             # a little hacky, but needed to easily run init_params
             model = model.to(device="cpu")
 
@@ -165,26 +162,23 @@ if __name__ == "__main__":
             traindescs = h5.get("descriptors")[...]
             model.pool.init_params(clsts, traindescs)
             del clsts, traindescs
-    print('model')
-    print(model)
+
+    # print('model')
+    # print(model)
     isParallel = False
-    '''if int(config['global_params']['nGPU']) > 1 and torch.cuda.device_count() > 1:
+    if int(config['global_params']['nGPU']) > 1 and torch.cuda.device_count() > 1:
         model.encoder = nn.DataParallel(model.encoder)
         model.pool = nn.DataParallel(model.pool)
         # model3d = nn.DataParallel(model3d)
-        isParallel = True'''
+        isParallel = True
 
     if config['train']['optim'] == 'ADAM':
-        optimizer = optim.Adam(filter(lambda par: par.requires_grad,
-                                      model.parameters()), lr=float(config['train']['lr']))  # , betas=(0,0.9))
+        optimizer = optim.Adam(filter(lambda par: par.requires_grad,model.parameters()), lr=float(config['train']['lr']))  # , betas=(0,0.9))
     elif config['train']['optim'] == 'SGD':
-        optimizer = optim.SGD(filter(lambda par: par.requires_grad,
-                                     model.parameters()), lr=float(config['train']['lr']),
-                              momentum=float(config['train']['momentum']),
-                              weight_decay=float(config['train']['weightDecay']))
+        optimizer = optim.SGD(filter(lambda par: par.requires_grad,model.parameters()), lr=float(config['train']['lr']),
+                              momentum=float(config['train']['momentum']), weight_decay=float(config['train']['weightDecay']))
 
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=int(config['train']['lrstep']),
-                                              gamma=float(config['train']['lrgamma']))
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=int(config['train']['lrstep']), gamma=float(config['train']['lrgamma']))
     else:
         raise ValueError('Unknown optimizer: ' + config['train']['optim'])
 
@@ -192,30 +186,30 @@ if __name__ == "__main__":
 
     model = model.to(device)
 
-    '''if opt.resume_path2d:
-        optimizer.load_state_dict(checkpoint['optimizer'])'''
+    if opt.resume_path2d:
+        optimizer.load_state_dict(checkpoint['optimizer'])
 
     # my code of 3dmodel
     print('===> Building 3d model')
     learning_rate = get_learning_rate(opt.start_epoch)
-    print('3dLR:')
-    print(learning_rate)
+    print('3dLR:\t',learning_rate)
+    
     if attention:
         model3d = PNV.PointNetVlad_attention(global_feat=True, feature_transform=True, max_pool=False, output_dim=256, num_points=4096)
         model3d.attention.init_weights()
     else:
         model3d = PNV.PointNetVlad(global_feat=True, feature_transform=True, max_pool=False, output_dim=256, num_points=4096)
-    print('model3d')
-    print(model3d)
+    print('model3d:\t',model3d)
+
     model3d = model3d.to(device)
 
     parameters3d = filter(lambda p: p.requires_grad, model3d.parameters())
 
     optimizer3d = optim.Adam(parameters3d, learning_rate)
     # scheduler3d = torch.optim.lr_scheduler.LambdaLR(optimizer3d, get_learning_rate, last_epoch=-1)
-    if opt.pretrained_path3d:
-        print("=> loading 3d model '{}'".format(opt.pretrained_path3d))
-        checkpoint3d = torch.load(opt.pretrained_path3d)
+    if opt.resume_path3d:
+        print("=> loading 3d model '{}'".format(opt.resume_path3d))
+        checkpoint3d = torch.load(opt.resume_path3d)
         # saved_state_dict = checkpoint['state_dict']
         # starting_epoch = checkpoint3d['epoch']
         # TOTAL_ITERATIONS = starting_epoch * len(TRAINING_QUERIES)
@@ -236,6 +230,7 @@ if __name__ == "__main__":
     print('===> Training query set:', len(train_dataset.qIdx))
     print('===> Evaluating on val set, query count:', len(validation_dataset.qIdx))
     print('===> Training model')
+    
     writer = SummaryWriter(log_dir=join(opt.save_path, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + opt.id))
 
     # write checkpoints in logdir
@@ -255,11 +250,13 @@ if __name__ == "__main__":
         train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion, encoder_dim, device, epoch, opt, config, writer)
         if scheduler is not None:
             scheduler.step(epoch)
+
         # learning rate decay for 3d model
         lr_3d = get_learning_rate(epoch)
         parameters3d = filter(lambda p: p.requires_grad, model3d.parameters())
         optimizer3d = optim.Adam(parameters3d, lr_3d)
-        if (epoch % int(config['train']['evalevery'])) == 0:
+
+        if (epoch % int(config['train']['eval_every'])) == 0:
             recalls = val(validation_dataset, model, model3d, encoder_dim, device, opt.threads, config, writer, size, epoch,
                           write_tboard=True, pbar_position=1)
             is_best = recalls[5] > best_score
@@ -268,7 +265,7 @@ if __name__ == "__main__":
                 best_score = recalls[5]
             else:
                 not_improved += 1
-
+            # save in a batch? or something else
             save_checkpoint({
                 'epoch': epoch,
                 'state_dict': model.state_dict(),
@@ -295,7 +292,7 @@ if __name__ == "__main__":
                 shutil.copyfile(save_name, join(opt.save_file_path3d, 'model_best.ckpt'))
 
             if int(config['train']['patience']) > 0 and not_improved > (
-                    int(config['train']['patience']) / int(config['train']['evalevery'])):
+                    int(config['train']['patience']) / int(config['train']['eval_every'])):
                 print('Performance did not improve for', config['train']['patience'], 'epochs. Stopping.')
                 break
 

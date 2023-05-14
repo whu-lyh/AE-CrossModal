@@ -1,0 +1,1 @@
+python mytrain.py --cache_path /data-lyh/cache --dataset_root_dir /data-lyh --cluster_path /data-lyh/cache/centroids/vgg_20m_KITTI360_64_desc_cen.hdf5

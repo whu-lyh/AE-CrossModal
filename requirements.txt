@@ -1,0 +1,8 @@
+numpy
+torch
+tqdm
+argparse
+configparser
+shutil
+h5py
+faiss-gpu
