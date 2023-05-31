@@ -13,9 +13,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import h5py
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import numpy as np
-from tqdm.auto import trange
+from tqdm import trange
 
 from mycode.NetVLAD.netvlad import get_model_netvlad
 import model3d.PointNetVlad as PNV
@@ -29,7 +29,11 @@ from crossmodal.training_tools.tools import save_checkpoint
 from crossmodal.tools.datasets import input_transform
 from crossmodal.models.models_generic import get_backend, get_model
 
+# single GPU
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# multi GPUs
+#os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
+
 def get_learning_rate(epoch):
     learning_rate = 0.0001 * ((0.8) ** (epoch // 2))  # 0.00005
     # learning_rate = max(learning_rate, 0.00001) * 50  # CLIP THE LEARNING RATE!
@@ -37,7 +41,6 @@ def get_learning_rate(epoch):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='CrossModal-train')
-
     parser.add_argument('--config_path', type=str, default='crossmodal/configs/train.ini',
                         help='File name (with extension) to an ini file that stores most of the configuration data')
     parser.add_argument('--cache_path', type=str, default='/data-lyh/KITTI360/cache',
@@ -64,18 +67,30 @@ if __name__ == "__main__":
                         help='Number of threads for each data loader to use')
     parser.add_argument('--nocuda', action='store_true', 
                         help='If true, use CPU only. Else use GPU.')
-    parser.add_argument('--network', type=str, default='vgg', 
-                        help='2D CNN network, e.g. vgg')
+    parser.add_argument('--network', type=str, default='resnet', 
+                        help='2D CNN network, e.g. vgg,resnet,spherical')
     parser.add_argument('--pretrained_cnn_network', type=bool, default=True, 
                         help='whether use pretrained 2D CNN network')
-
+    # multi GPUs setting
+    #parser.add_argument("--local_rank", type=int)
+    # parser.add_argument('--workers', default=32, type=int, metavar='N',
+    #                     help='number of data loading workers (default: 32)')
+    # parser.add_argument('--world_size', default=-1, type=int,
+    #                     help='number of nodes for distributed training')
+    # parser.add_argument('--rank', default=-1, type=int,
+    #                     help='node rank for distributed training')
+    # parser.add_argument('--multiprocessing-distributed', action='store_true',
+    #                     help='Use multi-processing distributed training to launch '
+    #                      'N processes per node, which has N GPUs. This is the '
+    #                      'fastest way to use PyTorch for either single node or '
+    #                      'multi node data parallel training')
+    
     opt = parser.parse_args()
     print(opt)
-    print('os.environ[CUDA_VISIBLE_DEVICES]:\t',os.environ['CUDA_VISIBLE_DEVICES'])
-    size = 512
+    input_img_size = 512
     attention = True #False
-    print('size:\t',size)
-    print('attention:\t',attention)
+    print('input_img_resize:\t',input_img_size)
+    print('attention usage:\t',attention)
     print('Current 2D CNN network:\t',opt.network)
     # load basic train parameters
     configfile = opt.config_path
@@ -83,6 +98,10 @@ if __name__ == "__main__":
     config = configparser.ConfigParser()
     config.read(configfile)
 
+    # multi GPUs setting
+    print('os.environ[CUDA_VISIBLE_DEVICES]:\t',os.environ['CUDA_VISIBLE_DEVICES'])
+    #torch.cuda.set_device(opt.local_rank) 
+    #torch.distributed.init_process_group(backend='nccl')
     # device_ids = [0, 1, 2, 3]
     cuda = not opt.nocuda
     if cuda and not torch.cuda.is_available():
@@ -96,7 +115,7 @@ if __name__ == "__main__":
         # noinspection PyUnresolvedReferences
         torch.cuda.manual_seed(int(config['train']['seed']))
 
-    optimizer = None
+    optimizer2d = None
     scheduler = None
 
     print('===> Building 2d model')
@@ -107,38 +126,34 @@ if __name__ == "__main__":
     if opt.network == 'spherical':
         encoder = sphere_resnet18(pretrained=pre)
         encoder_dim = 512
-        # sphe = True
-        # encoder_dim, encoder = get_spherical_cnn(network='original')  # TODO: freeze pretrained
     elif opt.network == 'resnet':
-        encoder_dim, encoder = get_backend(net='resnet', pre=pre) # resnet
+        encoder_dim, encoder = get_backend(net='resnet', pre=pre)
     elif opt.network == 'vgg':
-        encoder_dim, encoder = get_backend(net='vgg', pre=pre) # vgg
+        encoder_dim, encoder = get_backend(net='vgg', pre=pre)
     else:
         raise ValueError('Unknown cnn network')
 
     if opt.resume_path2d:  # if already started training earlier and continuing
         if isfile(opt.resume_path2d):
-            print("=> loading checkpoint '{}'".format(opt.resume_path2d))
+            print("===> loading checkpoint '{}'".format(opt.resume_path2d))
             checkpoint = torch.load(opt.resume_path2d, map_location=lambda storage, loc: storage)
             config['global_params']['num_clusters'] = str(checkpoint['state_dict']['pool.centroids'].shape[0])
-
-            # model = get_model(encoder, encoder_dim, config['global_params'], append_pca_layer=False)
-            model = get_model_netvlad(encoder, encoder_dim, config['global_params'],attention=attention)
-
+            # load same image bachbone
+            model = get_model_netvlad(encoder, encoder_dim, config['global_params'], attention=attention)
+            # load parameters
             model.load_state_dict(checkpoint['state_dict'], strict=False)
-            # opt.start_epoch = checkpoint['epoch']
-
-            print("=> loaded checkpoint '{}'".format(opt.resume_path2d, ))
+            print("===> loaded checkpoint '{}'".format(opt.resume_path2d))
+            print(checkpoint['epoch'])
         else:
             raise FileNotFoundError("=> no checkpoint found at '{}'".format(opt.resume_path2d))
     else:  # if not, assume fresh training instance and will initially generate cluster centroids
-        print('===> Loading model')
+        print('===> Building clusters')
         config['global_params']['num_clusters'] = config['train']['num_clusters']
-        # model = get_model(encoder, encoder_dim, config['global_params'], append_pca_layer=False)
         model = get_model_netvlad(encoder, encoder_dim, config['global_params'], attention=attention)
         # so what this cluster used for? code similar to Patch-NetVLAD code
         initcache = join(opt.cache_path, 'centroids', opt.network + '_20m_KITTI360_' + config['train']['num_clusters'] + '_desc_cen.hdf5')
         print('initcache:\t', initcache)
+        
         if opt.cluster_path:
             if isfile(opt.cluster_path):
                 if opt.cluster_path != initcache:
@@ -148,12 +163,12 @@ if __name__ == "__main__":
         else:
             print('===> Finding cluster centroids')
             print('===> Loading dataset(s) for clustering')
-            train_dataset = MSLS(opt.dataset_root_dir, mode='train', transform=input_transform(size, train=False),
-                                 bs=int(config['train']['cachebatchsize']), threads=opt.threads,margin=float(config['train']['margin']))
-
+            train_dataset = MSLS(opt.dataset_root_dir, mode='train', transform=input_transform(input_img_size, train=False),
+                                 bs=int(config['train']['cachebatchsize']), threads=opt.threads, margin=float(config['train']['margin']))
+            print(train_dataset)
             model = model.to(device)
             print('===> Calculating descriptors and clusters')
-            get_clusters(train_dataset, model, encoder_dim, device, opt, config, initcache, size)
+            get_clusters(train_dataset, model, encoder_dim, device, opt, config, initcache, input_img_size)
             # a little hacky, but needed to easily run init_params
             model = model.to(device="cpu")
 
@@ -163,8 +178,6 @@ if __name__ == "__main__":
             model.pool.init_params(clsts, traindescs)
             del clsts, traindescs
 
-    # print('model')
-    # print(model)
     isParallel = False
     if int(config['global_params']['nGPU']) > 1 and torch.cuda.device_count() > 1:
         model.encoder = nn.DataParallel(model.encoder)
@@ -173,91 +186,88 @@ if __name__ == "__main__":
         isParallel = True
 
     if config['train']['optim'] == 'ADAM':
-        optimizer = optim.Adam(filter(lambda par: par.requires_grad,model.parameters()), lr=float(config['train']['lr']))  # , betas=(0,0.9))
+        optimizer2d = optim.Adam(filter(lambda par: par.requires_grad,model.parameters()), lr=float(config['train']['lr']))  # , betas=(0,0.9))
     elif config['train']['optim'] == 'SGD':
-        optimizer = optim.SGD(filter(lambda par: par.requires_grad,model.parameters()), lr=float(config['train']['lr']),
+        optimizer2d = optim.SGD(filter(lambda par: par.requires_grad,model.parameters()), lr=float(config['train']['lr']),
                               momentum=float(config['train']['momentum']), weight_decay=float(config['train']['weightDecay']))
 
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=int(config['train']['lrstep']), gamma=float(config['train']['lrgamma']))
+        scheduler = optim.lr_scheduler.StepLR(optimizer2d, step_size=int(config['train']['lrstep']), gamma=float(config['train']['lrgamma']))
     else:
-        raise ValueError('Unknown optimizer: ' + config['train']['optim'])
-
-    criterion = nn.TripletMarginLoss(margin=float(config['train']['margin']) ** 0.5, p=2, reduction='sum').to(device)
+        raise ValueError('Unknown optimizer2d: ' + config['train']['optim'])
 
     model = model.to(device)
-
+    print('model2d:\t', model)
     if opt.resume_path2d:
-        optimizer.load_state_dict(checkpoint['optimizer'])
-
-    # my code of 3dmodel
+        optimizer2d.load_state_dict(checkpoint['optimizer'])
+    # 3D encoder
     print('===> Building 3d model')
-    learning_rate = get_learning_rate(opt.start_epoch)
-    print('3dLR:\t',learning_rate)
-    
     if attention:
+        # attention mechanism by AE-Spherical
         model3d = PNV.PointNetVlad_attention(global_feat=True, feature_transform=True, max_pool=False, output_dim=256, num_points=4096)
         model3d.attention.init_weights()
     else:
+        # vanilla PointNetVLAD
         model3d = PNV.PointNetVlad(global_feat=True, feature_transform=True, max_pool=False, output_dim=256, num_points=4096)
     print('model3d:\t',model3d)
-
     model3d = model3d.to(device)
-
+    # 3D learning rate
+    learning_rate = get_learning_rate(opt.start_epoch)
+    print('3dLR:\t', learning_rate)
+    # retain the specific layers to be optimized(require gradients and fix others)
     parameters3d = filter(lambda p: p.requires_grad, model3d.parameters())
-
     optimizer3d = optim.Adam(parameters3d, learning_rate)
     # scheduler3d = torch.optim.lr_scheduler.LambdaLR(optimizer3d, get_learning_rate, last_epoch=-1)
     if opt.resume_path3d:
         print("=> loading 3d model '{}'".format(opt.resume_path3d))
         checkpoint3d = torch.load(opt.resume_path3d)
-        # saved_state_dict = checkpoint['state_dict']
-        # starting_epoch = checkpoint3d['epoch']
-        # TOTAL_ITERATIONS = starting_epoch * len(TRAINING_QUERIES)
         model3d.load_state_dict(checkpoint3d['state_dict'], strict=False)
-        '''optimizer3d.load_state_dict(checkpoint3d['optimizer'])'''
-
+    # triplet loss
+    # more hints at:https://pytorch.org/docs/stable/generated/torch.nn.TripletMarginLoss.html
+    # A nonnegative margin representing the minimum difference between the positive and negative distances required for the loss to be 0
+    criterion = nn.TripletMarginLoss(margin=float(config['train']['margin']) ** 0.5, p=2, reduction='sum').to(device)
+    # datasets
     print('===> Loading dataset(s)')
-    # exlude_panos_training = not config['train'].getboolean('includepanos')
     train_dataset = MSLS(opt.dataset_root_dir, mode='train', nNeg=int(config['train']['nNeg']),
-                         transform=input_transform(size, train=True),
+                         transform=input_transform(input_img_size, train=True),
                          bs=int(config['train']['cachebatchsize']), threads=opt.threads,
                          margin=float(config['train']['margin']))
-
-    validation_dataset = MSLS(opt.dataset_root_dir, mode='val', transform=input_transform(size, train=False),
+    validation_dataset = MSLS(opt.dataset_root_dir, mode='val', transform=input_transform(input_img_size, train=False),
                               bs=int(config['train']['cachebatchsize']), threads=opt.threads,
                               margin=float(config['train']['margin']), posDistThr=20)
-
-    print('===> Training query set:', len(train_dataset.qIdx))
-    print('===> Evaluating on val set, query count:', len(validation_dataset.qIdx))
-    print('===> Training model')
-    
-    writer = SummaryWriter(log_dir=join(opt.save_path, datetime.now().strftime('%b%d_%H-%M-%S') + '_' + opt.id))
-
+    print('===> Training set: query number:', len(train_dataset.qIdx))
+    print('===> Validation set, query number:', len(validation_dataset.qIdx))
+    print('===> Begin to training the AE-Spherical model.')
+    # summary
+    writer = SummaryWriter(log_dir=join(opt.save_path, datetime.now().strftime('%b%d_%H_%M_%S') + '_' + opt.id))
     # write checkpoints in logdir
     logdir = writer.file_writer.get_logdir()
+    print('logdir:\t',logdir)
     opt.save_file_path2d = join(logdir, 'checkpoints')
     makedirs(opt.save_file_path2d)
     opt.save_file_path3d = join(logdir, 'checkpoints3d')
     makedirs(opt.save_file_path3d)
-
+    # precision initialization
     not_improved = 0
     best_score = 0
     if opt.resume_path2d:
         not_improved = checkpoint['not_improved']
         best_score = checkpoint['best_score']
-
+    # loop train
     for epoch in trange(opt.start_epoch + 1, opt.nEpochs + 1, desc='Epoch number'.rjust(15), position=0):
-        train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion, encoder_dim, device, epoch, opt, config, writer)
+        train_epoch(train_dataset, model, model3d, optimizer2d, optimizer3d, criterion, 
+                    encoder_dim, device, epoch, opt, config, writer)
+        # 2d model learning rate decay is based on epoch number
         if scheduler is not None:
             scheduler.step(epoch)
-
         # learning rate decay for 3d model
         lr_3d = get_learning_rate(epoch)
         parameters3d = filter(lambda p: p.requires_grad, model3d.parameters())
         optimizer3d = optim.Adam(parameters3d, lr_3d)
-
+        # validation
         if (epoch % int(config['train']['eval_every'])) == 0:
-            recalls = val(validation_dataset, model, model3d, encoder_dim, device, opt.threads, config, writer, size, epoch,
+            print("Validation begins at epoch: ", epoch)
+            recalls = val(validation_dataset, model, model3d, 
+                          encoder_dim, device, opt.threads, config, writer, input_img_size, epoch,
                           write_tboard=True, pbar_position=1)
             is_best = recalls[5] > best_score
             if is_best:
@@ -265,17 +275,17 @@ if __name__ == "__main__":
                 best_score = recalls[5]
             else:
                 not_improved += 1
-            # save in a batch? or something else
+            # save checkpoint
             save_checkpoint({
                 'epoch': epoch,
                 'state_dict': model.state_dict(),
                 'recalls': recalls,
                 'best_score': best_score,
                 'not_improved': not_improved,
-                'optimizer': optimizer.state_dict(),
+                'optimizer': optimizer2d.state_dict(),
                 'parallel': isParallel,
             }, opt, is_best)
-
+            # fake multi-GPU training
             if isinstance(model3d, nn.DataParallel):
                 model_to_save = model3d.module
             else:
@@ -286,20 +296,19 @@ if __name__ == "__main__":
                 'epoch': epoch,
                 'state_dict': model_to_save.state_dict(),
                 'optimizer': optimizer3d.state_dict(),
-            },
-                save_name)
+            }, save_name)
             if is_best:
                 shutil.copyfile(save_name, join(opt.save_file_path3d, 'model_best.ckpt'))
-
+            # early stoping will be done when the non-improvement epoch has already exceed the patience tolerance value
             if int(config['train']['patience']) > 0 and not_improved > (
                     int(config['train']['patience']) / int(config['train']['eval_every'])):
                 print('Performance did not improve for', config['train']['patience'], 'epochs. Stopping.')
                 break
+            print("Validation finished!")
 
     print("=> Best Recall@5: {:.4f}".format(best_score), flush=True)
     writer.close()
-
-    torch.cuda.empty_cache()  # garbage clean GPU memory, a bug can occur when Pytorch doesn't automatically clear the
+    # garbage clean GPU memory, a bug can occur when Pytorch doesn't automatically clear the
+    torch.cuda.empty_cache()  
     # memory after runs
-
     print('Done')

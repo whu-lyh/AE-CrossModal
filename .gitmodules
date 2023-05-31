@@ -1,3 +1,0 @@
-[submodule "submodules/kitti360-map-python"]
-	path = submodules/kitti360-map-python
-	url = git@github.com:Zhaozhpe/kitti360-map-python.git

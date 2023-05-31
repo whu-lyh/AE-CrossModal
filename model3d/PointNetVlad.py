@@ -183,6 +183,13 @@ class STN3d(nn.Module):
 
 
 class PointNetfeat(nn.Module):
+    '''
+        PointNet-style backbone
+        Input:
+            Nx3 tensor
+        Output:
+            1024 global feature
+    '''
     def __init__(self, num_points=2500, global_feat=True, feature_transform=False, max_pool=True):
         super(PointNetfeat, self).__init__()
         self.stn = STN3d(num_points=num_points, k=3, use_bn=False)
@@ -208,9 +215,6 @@ class PointNetfeat(nn.Module):
         trans = self.stn(x)
         x = torch.matmul(torch.squeeze(x), trans)
         x = x.view(batchsize, 1, -1, 3)
-        #x = x.transpose(2,1)
-        #x = torch.bmm(x, trans)
-        #x = x.transpose(2,1)
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.relu(self.bn2(self.conv2(x)))
         pointfeat = x
@@ -238,22 +242,26 @@ class PointNetfeat(nn.Module):
 
 
 class PointNetVlad(nn.Module):
+    '''
+        Basic PointNetVLAD module by Mikaela Angelina Uy
+    '''
     def __init__(self, num_points=2500, global_feat=True, feature_transform=False, max_pool=True, output_dim=1024):
         super(PointNetVlad, self).__init__()
         self.point_net = PointNetfeat(num_points=num_points, global_feat=global_feat,
                                       feature_transform=feature_transform, max_pool=max_pool)
-        # self.attention = SEAttention(channel=1024, reduction=8)
         self.net_vlad = NetVLADLoupe(feature_size=1024, max_samples=num_points, cluster_size=64,
                                      output_dim=output_dim, gating=True, add_batch_norm=True,
                                      is_training=True)
 
     def forward(self, x):
         x = self.point_net(x)
-        # x = self.attention(x)
         x = self.net_vlad(x)
         return x
 
 class PointNetVlad_attention(nn.Module):
+    '''
+        PointNetVLAD+SE Attention by AE-Spherical
+    '''
     def __init__(self, num_points=2500, global_feat=True, feature_transform=False, max_pool=True, output_dim=1024):
         super(PointNetVlad_attention, self).__init__()
         self.point_net = PointNetfeat(num_points=num_points, global_feat=global_feat,

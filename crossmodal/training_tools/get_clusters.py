@@ -39,7 +39,7 @@ import h5py
 import faiss
 import numpy as np
 from torch.utils.data import DataLoader, SubsetRandomSampler
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 #sys.path.append('../../')
 from mycode.msls import ImagesFromList
@@ -59,14 +59,11 @@ def get_clusters(cluster_set, model, encoder_dim, device, opt, config, initcache
 
     cluster_data_loader = DataLoader(dataset=ImagesFromList(cluster_set.dbImages, transform=input_transform(size,train=False)),
                                      num_workers=opt.threads, batch_size=int(config['train']['cachebatchsize']), shuffle=False,
-                                     pin_memory=cuda,
-                                     sampler=cluster_sampler)
+                                     pin_memory=cuda, sampler=cluster_sampler)
 
     if not exists(join(opt.cache_path, 'centroids')):
         makedirs(join(opt.cache_path, 'centroids'))
 
-    # initcache_clusters = join(opt.cache_path, 'centroids',
-    #                           'vgg16_' + 'KITTI360_s2_' + config['train']['num_clusters'] + '_desc_cen.hdf5')
     initcache_clusters = initcache
     with h5py.File(initcache_clusters, mode='w') as h5_file:
         with torch.no_grad():

@@ -52,16 +52,16 @@ def get_pca_encoding(model, vlad_encoding):
 def get_backend(net='vgg', pre=True):
     enc_dim = 512
     if net == 'resnet':
+        # resnet: only train the last module(layer[7])
         enc = models.resnet18(pretrained=pre)
         layers = list(enc.children())[:-2]
         index = -1
     else:
+        # vgg: only train conv5_1, conv5_2, and conv5_3 (leave rest same as Imagenet trained weights)
         enc = models.vgg16(pretrained=pre)
         layers = list(enc.features.children())[:-2]
         index = -5
-
-    # vgg: only train conv5_1, conv5_2, and conv5_3 (leave rest same as Imagenet trained weights)
-    # resnet: only train the last module(layer[7])
+    # freeze the shallow nerual layers
     for layer in layers[:index]:
         for p in layer.parameters():
             p.requires_grad = False

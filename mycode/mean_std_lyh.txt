@@ -1,0 +1,10 @@
+2013_05_28_drive_0000_syncDone!
+2013_05_28_drive_0002_syncDone!
+2013_05_28_drive_0003_syncDone!
+2013_05_28_drive_0004_syncDone!
+2013_05_28_drive_0006_syncDone!
+2013_05_28_drive_0007_syncDone!
+2013_05_28_drive_0009_syncDone!
+2013_05_28_drive_0010_syncDone!
+R_mean is 0.056020, G_mean is 0.064157, B_mean is 0.067195
+R_var is 0.172305, G_var is 0.192164, B_var is 0.204675

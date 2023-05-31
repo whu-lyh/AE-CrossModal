@@ -41,7 +41,7 @@ limitations under the License.
 import os
 import numpy as np
 import torch
-from tqdm.auto import tqdm
+from tqdm import tqdm
 from crossmodal.tools.patch_matcher import PatchMatcher
 
 

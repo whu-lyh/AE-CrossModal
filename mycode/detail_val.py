@@ -35,7 +35,7 @@ Validation of NetVLAD, using the Mapillary Street-level Sequences Dataset.
 import numpy as np
 import torch
 import faiss
-from tqdm.auto import tqdm
+from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 from mycode.msls import ImagesFromList
@@ -55,13 +55,13 @@ def save_img_my(tensor, name):
     Image.fromarray(im).save(name + '.jpg')
 
 
-def val(eval_set, model, model3d, device, threads, config, writer, size, epoch_num=0, write_tboard=False, pbar_position=0):
+def val(eval_set, model, model3d, device, threads, config, writer, size, result_path, epoch_num=0, write_tboard=False, pbar_position=0):
     if device.type == 'cuda':
         cuda = True
     else:
         cuda = False
-    eval_set_queries = ImagesFromList(eval_set.qImages, transform=input_transform(size, train=False))  # (512,512)
-    eval_set_dbs = ImagesFromList(eval_set.dbImages, transform=input_transform(size, train=False)) # (512,512)
+    eval_set_queries = ImagesFromList(eval_set.qImages, transform=input_transform(size, train=False))
+    eval_set_dbs = ImagesFromList(eval_set.dbImages, transform=input_transform(size, train=False))
     eval_set_queries_pc = PcFromFiles(eval_set.qPcs)
     eval_set_dbs_pc = PcFromFiles(eval_set.dbPcs)
     print('eval.qImg')
@@ -89,8 +89,8 @@ def val(eval_set, model, model3d, device, threads, config, writer, size, epoch_n
                                       num_workers=threads, batch_size=int(config['train']['cachebatchsize']),
                                       shuffle=False, pin_memory=cuda)
     # for each query get those within threshold distance
-    save_pic = False
-    save_path = './output/'
+    save_pic = True
+    save_path = os.path.join(result_path,r'output')
     if not os.path.exists(save_path):
         os.mkdir(save_path)
     gt = eval_set.all_pos_indices
@@ -104,7 +104,7 @@ def val(eval_set, model, model3d, device, threads, config, writer, size, epoch_n
     gt_dic = dict(zip(gt_index, gt_lists))
     # print('gt')
     # print(gt_dic)
-    with open('./output/ground_truth.txt', 'w', encoding= 'utf-8') as file:
+    with open(os.path.join(save_path,r'ground_truth.txt'), 'w', encoding= 'utf-8') as file:
         file.write(json.dumps(gt_dic))
 
     model.eval()
@@ -205,8 +205,8 @@ def val(eval_set, model, model3d, device, threads, config, writer, size, epoch_n
             faiss_index = faiss.IndexFlatL2(pool_size)
             faiss_index.add(dbTest[dbEndPosTot:dbEndPosTot+dbEndPos, :])
             dis, preds = faiss_index.search(qTest[qEndPosTot:qEndPosTot+qEndPos, :], max(n_values)+1) # add +1
-            print(des[i])
-            print(dis)
+            # print(des[i])
+            # print(dis)
             # print('cityNum')
             # print(cityNum)
             # print('pred')
@@ -219,9 +219,9 @@ def val(eval_set, model, model3d, device, threads, config, writer, size, epoch_n
             dbEndPosTot += dbEndPos
     # get rid of the same frame of query and database for same modality
     # predictions = predictions_t
-    for i in range(4):
-        print(des[i])
-        print(predictions_t[i])
+    # for i in range(4):
+    #     print(des[i])
+    #     print(predictions_t[i])
     predictions[0] = [list(pre[1:]) for pre in predictions_t[0]]
     predictions[3] = [list(pre[1:]) for pre in predictions_t[3]]
     predictions[1] = [list(pre[:50]) for pre in predictions_t[1]]

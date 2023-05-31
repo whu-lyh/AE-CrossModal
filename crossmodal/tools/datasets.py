@@ -25,14 +25,11 @@ into the design of the dataloader
 
 
 import os
-
+import numpy as np
 import torchvision.transforms as transforms
 import torch.utils.data as data
-
-import numpy as np
 from PIL import Image
 from sklearn.neighbors import NearestNeighbors
-
 from crossmodal.tools import PATCHNETVLAD_ROOT_DIR
 
 
@@ -42,17 +39,29 @@ def input_transform(resize, train): # (480, 640) 512
             transforms.RandomApply([
                 transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.4, hue=0.3),
                 transforms.RandomAffine(degrees=(-5, 5), translate=(0.1, 0.1))], p=0.5),
-            transforms.Resize(resize),
+            #transforms.Resize(resize),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.396197, 0.452953, 0.490031],
-                                 std=[0.315778, 0.343629, 0.369563]),
+            # transforms.Normalize(mean=[0.396197, 0.452953, 0.490031],
+            #                      std=[0.315778, 0.343629, 0.369563]),
+            # pytorch statistic information
+            # transforms.Normalize(mean=[0.485, 0.456, 0.406],
+            #                       std=[0.229, 0.224, 0.225]),
+            # kitti360 dataset
+            transforms.Normalize(mean=[0.056020, 0.064157, 0.067195],
+            std=[0.172305, 0.192164, 0.204675]),
         ])
     else:
         return transforms.Compose([
-            transforms.Resize(resize),
+            #transforms.Resize(resize),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.396197, 0.452953, 0.490031],
-                                 std=[0.315778, 0.343629, 0.369563]),
+            # transforms.Normalize(mean=[0.396197, 0.452953, 0.490031],
+            #                      std=[0.315778, 0.343629, 0.369563]),
+            # pytorch statistic information
+            # transforms.Normalize(mean=[0.485, 0.456, 0.406],
+            #                       std=[0.229, 0.224, 0.225]),
+            # kitti360 dataset
+            transforms.Normalize(mean=[0.056020, 0.064157, 0.067195],
+            std=[0.172305, 0.192164, 0.204675]),
     ])
 
 

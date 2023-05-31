@@ -1,11 +1,12 @@
+
+import math
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import math
-import numpy as np
 from attention.SEAttention import SEAttention
 
-#add
+
 class GatingContext(nn.Module):
     def __init__(self, dim, add_batch_norm=True):
         super(GatingContext, self).__init__()
@@ -38,8 +39,9 @@ class GatingContext(nn.Module):
         return activation
 
 class NetVLAD(nn.Module):
-    """NetVLAD layer implementation"""
-
+    """
+        NetVLAD layer implementation
+    """
     def __init__(self, num_clusters=64, dim=128, alpha=100.0,
                  normalize_input=True):
         """
@@ -60,23 +62,12 @@ class NetVLAD(nn.Module):
         self.normalize_input = normalize_input
         self.conv = nn.Conv2d(dim, num_clusters, kernel_size=(1, 1), bias=False)
         self.centroids = nn.Parameter(torch.rand(num_clusters, dim))
-#add
         self.hidden1_weights = nn.Parameter(
             torch.randn(num_clusters * dim, 256) * 1 / math.sqrt(dim))
         self.bn2 = nn.BatchNorm1d(256)
-        self.context_gating = GatingContext(
-            256, add_batch_norm=True)
+        self.context_gating = GatingContext(256, add_batch_norm=True)
 
-        # self._init_params()
 
-    # def _init_params(self):
-    #     self.conv.weight = nn.Parameter(
-    #         (2.0 * self.alpha * self.centroids).unsqueeze(-1).unsqueeze(-1)
-    #     )
-    #     self.conv.bias = nn.Parameter(
-    #         - self.alpha * self.centroids.norm(dim=1)
-    #     )
-# add cluster initial
     def init_params(self, clsts, traindescs):
         clstsAssign = clsts / np.linalg.norm(clsts, axis=1, keepdims=True)
         dots = np.dot(clstsAssign, traindescs.T)
@@ -89,6 +80,7 @@ class NetVLAD(nn.Module):
         # noinspection PyArgumentList
         self.conv.weight = nn.Parameter(torch.from_numpy(self.alpha * clstsAssign).unsqueeze(2).unsqueeze(3))
         self.conv.bias = None
+
 
     def forward(self, x):
         N, C = x.shape[:2]
@@ -122,9 +114,6 @@ class NetVLAD(nn.Module):
 
         vlad = vlad.view(x.size(0), -1)  # flatten
         vlad = F.normalize(vlad, p=2, dim=1)  # L2 normalize
-
-
-# add
         vlad = torch.matmul(vlad, self.hidden1_weights)
         # print("vald1.size")
         # print(vlad.shape)
@@ -136,7 +125,7 @@ class NetVLAD(nn.Module):
         vlad = self.context_gating(vlad)
 
         return vlad
-#, vlad_t
+
 
 class EmbedNet(nn.Module):
     def __init__(self, base_model, net_vlad):
@@ -164,13 +153,20 @@ class TripletNet(nn.Module):
     def feature_extract(self, x):
         return self.embed_net(x)
 
+
 def get_model_netvlad(encoder, encoder_dim, config, attention):
+    '''
+        Image global feature model that contains: feature extractor(backbone+attention) and pooling(NetVlad) module
+    '''
     nn_model = nn.Module()
+    # set feature encoder
     nn_model.add_module('encoder', encoder)
+    # new part from AE-Spherical
     if attention:
         seaAtten = SEAttention(channel=512, reduction=8)
         seaAtten.init_weights()
         nn_model.add_module('attention', seaAtten)
+    # set dimension reduction layer following Patch-NetVLAD
     net_vlad = NetVLAD(num_clusters=int(config['num_clusters']), dim=encoder_dim, alpha=1.0)
     nn_model.add_module('pool', net_vlad)
     return nn_model
