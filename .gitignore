@@ -7,3 +7,6 @@ __pycache__
 .vscode/
 weights/
 log/
+eval/output_lyh/
+eval/output/*.txt
+eval/*.txt

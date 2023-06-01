@@ -46,7 +46,7 @@ from mycode.msls import ImagesFromList
 from crossmodal.tools.datasets import input_transform
 
 
-def get_clusters(cluster_set, model, encoder_dim, device, opt, config, initcache, size):
+def get_clusters(cluster_set, model, encoder_dim, device, opt, config, initcache):
     if device.type == 'cuda':
         cuda = True
     else:
@@ -57,7 +57,7 @@ def get_clusters(cluster_set, model, encoder_dim, device, opt, config, initcache
 
     cluster_sampler = SubsetRandomSampler(np.random.choice(len(cluster_set.dbImages), nIm, replace=False))
 
-    cluster_data_loader = DataLoader(dataset=ImagesFromList(cluster_set.dbImages, transform=input_transform(size,train=False)),
+    cluster_data_loader = DataLoader(dataset=ImagesFromList(cluster_set.dbImages, transform=input_transform(train=False)),
                                      num_workers=opt.threads, batch_size=int(config['train']['cachebatchsize']), shuffle=False,
                                      pin_memory=cuda, sampler=cluster_sampler)
 

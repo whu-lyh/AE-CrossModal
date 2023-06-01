@@ -67,6 +67,8 @@ if __name__ == "__main__":
                         help='Number of threads for each data loader to use')
     parser.add_argument('--nocuda', action='store_true', 
                         help='If true, use CPU only. Else use GPU.')
+    parser.add_argument('--attention', action='store_true', 
+                        help='If true, add SE attention to backbone.')
     parser.add_argument('--network', type=str, default='resnet', 
                         help='2D CNN network, e.g. vgg,resnet,spherical')
     parser.add_argument('--pretrained_cnn_network', type=bool, default=True, 
@@ -87,11 +89,6 @@ if __name__ == "__main__":
     
     opt = parser.parse_args()
     print(opt)
-    input_img_size = 512
-    attention = True #False
-    print('input_img_resize:\t',input_img_size)
-    print('attention usage:\t',attention)
-    print('Current 2D CNN network:\t',opt.network)
     # load basic train parameters
     configfile = opt.config_path
     assert os.path.isfile(configfile)
@@ -107,22 +104,24 @@ if __name__ == "__main__":
     if cuda and not torch.cuda.is_available():
         raise Exception("No GPU found, please run with --nocuda")
     device = torch.device("cuda" if cuda else "cpu")
-
+    # random seed
     random.seed(int(config['train']['seed']))
     np.random.seed(int(config['train']['seed']))
     torch.manual_seed(int(config['train']['seed']))
     if cuda:
-        # noinspection PyUnresolvedReferences
         torch.cuda.manual_seed(int(config['train']['seed']))
-
-    optimizer2d = None
-    scheduler = None
-
     print('===> Building 2d model')
+    # attention switcher
+    if opt.attention:
+        attention = True
+    else:
+        attention = False
+    print('attention usage:\t',attention)
+    print('Current 2D CNN network backbone:\t',opt.network)
     # feature extract network
     pre = opt.pretrained_cnn_network
     print('whether use pretrained 2D CNN network:\t', opt.pretrained_cnn_network)
-
+    # basic backbone
     if opt.network == 'spherical':
         encoder = sphere_resnet18(pretrained=pre)
         encoder_dim = 512
@@ -132,8 +131,8 @@ if __name__ == "__main__":
         encoder_dim, encoder = get_backend(net='vgg', pre=pre)
     else:
         raise ValueError('Unknown cnn network')
-
-    if opt.resume_path2d:  # if already started training earlier and continuing
+    # if already started training earlier and continuing
+    if opt.resume_path2d:
         if isfile(opt.resume_path2d):
             print("===> loading checkpoint '{}'".format(opt.resume_path2d))
             checkpoint = torch.load(opt.resume_path2d, map_location=lambda storage, loc: storage)
@@ -153,7 +152,7 @@ if __name__ == "__main__":
         # so what this cluster used for? code similar to Patch-NetVLAD code
         initcache = join(opt.cache_path, 'centroids', opt.network + '_20m_KITTI360_' + config['train']['num_clusters'] + '_desc_cen.hdf5')
         print('initcache:\t', initcache)
-        
+        # predefined cluster centers, have little effect to final results
         if opt.cluster_path:
             if isfile(opt.cluster_path):
                 if opt.cluster_path != initcache:
@@ -163,12 +162,12 @@ if __name__ == "__main__":
         else:
             print('===> Finding cluster centroids')
             print('===> Loading dataset(s) for clustering')
-            train_dataset = MSLS(opt.dataset_root_dir, mode='train', transform=input_transform(input_img_size, train=False),
+            train_dataset = MSLS(opt.dataset_root_dir, mode='train', transform=input_transform(train=False),
                                  bs=int(config['train']['cachebatchsize']), threads=opt.threads, margin=float(config['train']['margin']))
             print(train_dataset)
             model = model.to(device)
             print('===> Calculating descriptors and clusters')
-            get_clusters(train_dataset, model, encoder_dim, device, opt, config, initcache, input_img_size)
+            get_clusters(train_dataset, model, encoder_dim, device, opt, config, initcache)
             # a little hacky, but needed to easily run init_params
             model = model.to(device="cpu")
 
@@ -184,13 +183,14 @@ if __name__ == "__main__":
         model.pool = nn.DataParallel(model.pool)
         # model3d = nn.DataParallel(model3d)
         isParallel = True
-
+    # lr
+    optimizer2d = None
+    scheduler = None
     if config['train']['optim'] == 'ADAM':
         optimizer2d = optim.Adam(filter(lambda par: par.requires_grad,model.parameters()), lr=float(config['train']['lr']))  # , betas=(0,0.9))
     elif config['train']['optim'] == 'SGD':
         optimizer2d = optim.SGD(filter(lambda par: par.requires_grad,model.parameters()), lr=float(config['train']['lr']),
                               momentum=float(config['train']['momentum']), weight_decay=float(config['train']['weightDecay']))
-
         scheduler = optim.lr_scheduler.StepLR(optimizer2d, step_size=int(config['train']['lrstep']), gamma=float(config['train']['lrgamma']))
     else:
         raise ValueError('Unknown optimizer2d: ' + config['train']['optim'])
@@ -228,10 +228,10 @@ if __name__ == "__main__":
     # datasets
     print('===> Loading dataset(s)')
     train_dataset = MSLS(opt.dataset_root_dir, mode='train', nNeg=int(config['train']['nNeg']),
-                         transform=input_transform(input_img_size, train=True),
+                         transform=input_transform(train=True),
                          bs=int(config['train']['cachebatchsize']), threads=opt.threads,
                          margin=float(config['train']['margin']))
-    validation_dataset = MSLS(opt.dataset_root_dir, mode='val', transform=input_transform(input_img_size, train=False),
+    validation_dataset = MSLS(opt.dataset_root_dir, mode='val', transform=input_transform(train=False),
                               bs=int(config['train']['cachebatchsize']), threads=opt.threads,
                               margin=float(config['train']['margin']), posDistThr=20)
     print('===> Training set: query number:', len(train_dataset.qIdx))
@@ -267,7 +267,7 @@ if __name__ == "__main__":
         if (epoch % int(config['train']['eval_every'])) == 0:
             print("Validation begins at epoch: ", epoch)
             recalls = val(validation_dataset, model, model3d, 
-                          encoder_dim, device, opt.threads, config, writer, input_img_size, epoch,
+                          encoder_dim, device, opt.threads, config, writer, epoch,
                           write_tboard=True, pbar_position=1)
             is_best = recalls[5] > best_score
             if is_best:

@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from tqdm import trange, tqdm
 import torch
@@ -33,7 +34,7 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
         train_dataset.update_subcache(net=None, net3d=None, outputdim=pool_global_feature_dim)
         # add train triplet dataset into dataloader, batch triplets will be loaded
         training_data_loader = DataLoader(dataset=train_dataset, num_workers=opt.threads,
-                                          batch_size=int(config['train']['batchsize']), shuffle=True, persistent_workers=True, 
+                                          batch_size=int(config['train']['batchsize']), shuffle=True, 
                                           collate_fn=MSLS.collate_fn, pin_memory=cuda)
         
         # train_sampler = torch.utils.data.distributed.DistributedSampler(dataset=train_dataset)     
@@ -57,10 +58,10 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
             B = query.shape[0]
             if debug:
                 batch1 = {}
-                # -14 = 7*2,(7=0,-1,nidx),(2 for what? batch_size:2)
-                batch1['query'] = train_dataset.qImages[indices[0]][-14:]
-                batch1['positive'] = train_dataset.dbImages[indices[1]][-14:]
-                batch1['negatives'] = [train_dataset.dbImages[indices[i]][-14:] for i in range(2,7)]
+                # save query, positive, negatives file name
+                batch1['query'] = os.path.basename(train_dataset.qImages[indices[0]])
+                batch1['positive'] = os.path.basename(train_dataset.dbImages[indices[1]])
+                batch1['negatives'] = [os.path.basename(train_dataset.dbImages[indices[i]]) for i in range(2,7)]
                 print('batch1:\t',batch1)
             # negative images in this batch
             nNeg = torch.sum(negCounts)

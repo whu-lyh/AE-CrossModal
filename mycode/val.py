@@ -8,11 +8,8 @@ from mycode.msls import ImagesFromList
 from mycode.msls import PcFromFiles
 from crossmodal.tools.datasets import input_transform
 
-import torch.utils.data as data
-import torchvision.transforms as transforms
 
-
-def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, writer, img_resize, 
+def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, writer, 
         epoch_num=0, write_tboard=False, pbar_position=0):
     '''
         Validation function
@@ -22,30 +19,26 @@ def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, wr
     else:
         cuda = False
     # fetch validation datasets
-    eval_dataset_queries = ImagesFromList(eval_dataset.qImages, transform=input_transform(img_resize, train=False))
-    eval_dataset_dbs = ImagesFromList(eval_dataset.dbImages, transform=input_transform(img_resize, train=False))
+    eval_dataset_queries = ImagesFromList(eval_dataset.qImages, transform=input_transform(train=False))
+    eval_dataset_dbs = ImagesFromList(eval_dataset.dbImages, transform=input_transform(train=False))
     eval_dataset_queries_pc = PcFromFiles(eval_dataset.qPcs)
     eval_dataset_dbs_pc = PcFromFiles(eval_dataset.dbPcs)
     # dataloader
     test_data_loader_queries = DataLoader(dataset=eval_dataset_queries,
                                             num_workers=threads, 
                                             batch_size=int(config['train']['cachebatchsize']),
-                                            persistent_workers=True, 
                                             shuffle=False, pin_memory=cuda)
     test_data_loader_dbs = DataLoader(dataset=eval_dataset_dbs,
                                         num_workers=threads, 
                                         batch_size=int(config['train']['cachebatchsize']),
-                                        persistent_workers=True, 
                                         shuffle=False, pin_memory=cuda)
     test_data_loader_queries_pc = DataLoader(dataset=eval_dataset_queries_pc,
                                                 num_workers=threads, 
                                                 batch_size=int(config['train']['cachebatchsize']),
-                                                persistent_workers=True, 
                                                 shuffle=False, pin_memory=cuda)
     test_data_loader_dbs_pc = DataLoader(dataset=eval_dataset_dbs_pc,
                                             num_workers=threads, 
                                             batch_size=int(config['train']['cachebatchsize']),
-                                            persistent_workers=True, 
                                             shuffle=False, pin_memory=cuda)
     # model freeze BN and dropout while validation
     model2d.eval()
@@ -91,8 +84,6 @@ def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, wr
     # for each query get those within threshold distance
     # The gt indices are found by knn from database images
     gt = eval_dataset.all_pos_indices
-    # print('ground_truth')
-    # print(gt)
     # knn searching
     predictions = {}
     predictions_t = {}
