@@ -17,7 +17,7 @@ import random
 
 # 03 is too short to find triplets
 default_cities = {
-    'train': ["0"],#, "2", "4", "5", "6", "7", "9", "10"],
+    'train': ["0", "2", "4", "5", "6", "7", "9", "10"],
     'val': ["3"],
     'test': []
 }
@@ -60,8 +60,8 @@ class PcFromFiles(Dataset):
 
 class MSLS(Dataset):
     def __init__(self, root_dir, cities='', nNeg=5, transform=None, mode='train', 
-                 posDistThr=20, negDistThr=40, cached_queries=4000, cached_negatives=25000,
-                 positive_sampling=True, bs=60, threads=8, margin=0.1): 
+                 posDistThr=15, negDistThr=35, cached_queries=4000, cached_negatives=25000,
+                 batch_size=2, threads=8, margin=0.2):
         # initializing
         assert mode in ('train', 'val', 'test')
         # check sequences to be processed
@@ -71,25 +71,25 @@ class MSLS(Dataset):
             self.cities = default_cities[mode]
         else:
             self.cities = cities.split(',')
-        # image and submap share the same idx
-        self.qIdx = []
-        self.qImages = []
-        self.qPcs = []
-        self.dbImages = []
-        self.dbPcs = []
+        # image and submap share the same idx, initialized as list, but turn into np.array after initialization
+        self.qIdx = [] # query index
+        self.qImages = [] # query images' path
+        self.qPcs = [] # query pcs' path
+        self.dbImages = [] # database images path
+        self.dbPcs = [] # database pcs path
         # index
-        self.pIdx = []
-        self.nonNegIdx = []
+        self.pIdx = [] # postive index
+        self.nonNegIdx = [] # neg
         self.qEndPosList = []
         self.dbEndPosList = []
-        self.all_pos_indices = []
+        self.all_pos_indices = [] # gt
         # hyper-parameters
-        self.nNeg = nNeg
-        self.margin = margin
-        self.posDistThr = posDistThr
-        self.negDistThr = negDistThr
-        self.cached_queries = cached_queries
-        self.cached_negatives = cached_negatives
+        self.nNeg = nNeg # negative number
+        self.margin = margin # triplet margin
+        self.posDistThr = posDistThr # posetive distance
+        self.negDistThr = negDistThr # negative distance
+        self.cached_queries = cached_queries # cached queries
+        self.cached_negatives = cached_negatives # cached negatives
         # flags
         self.cache = None
         self.mode = mode
@@ -101,7 +101,7 @@ class MSLS(Dataset):
             print("=====> {}".format(city))
             subdir_img = 'data_2d_pano'
             subdir_submap = 'data_3d_submap'
-            # get len of images from cities so far for indexing
+            # get len of images from cities so far for global indexing
             _lenQ = len(self.qImages)
             _lenDb = len(self.dbImages)
             # when GPS / UTM is available, if there is no overlaps between train and val, the following loading code has no difference
@@ -116,13 +116,14 @@ class MSLS(Dataset):
                     # load database data
                     dbData = pd.read_csv(join(root_dir, subdir_img, city, 'database.csv'), index_col=0)
                 # what is the usage of the seq structure? or just some inherit from MSLS, bingo
-                qSeqKeys, qSeqIdxs, qSeqKeys_pc, qSeqIdxs_pc = self.arange_as_seq(qData, 
-                                                                                  join(root_dir, subdir_img, city), 
-                                                                                  join(root_dir, subdir_submap, city))
+                # fetch query data, specifically data path
+                qSeqIdxs, qSeqKeys, qSeqKeys_pc = self.arange_as_seq(qData, 
+                                                                    join(root_dir, subdir_img, city), 
+                                                                    join(root_dir, subdir_submap, city))
                 # load database data
-                dbSeqKeys, dbSeqIdxs, dbSeqKeys_pc, dbSeqIdxs_pc = self.arange_as_seq(dbData, 
-                                                                                      join(root_dir, subdir_img, city), 
-                                                                                      join(root_dir, subdir_submap, city))
+                dbSeqIdxs, dbSeqKeys, dbSeqKeys_pc = self.arange_as_seq(dbData, 
+                                                                    join(root_dir, subdir_img, city), 
+                                                                    join(root_dir, subdir_submap, city))
                 # if there are no query/dabase images,
                 # then continue to next city
                 if len(qSeqIdxs) == 0 or len(dbSeqIdxs) == 0:
@@ -146,18 +147,18 @@ class MSLS(Dataset):
                 pos_distances, pos_indices = neigh.radius_neighbors(utmQ, self.posDistThr)
                 # the nearest idxes will be the ground truth when val mode
                 self.all_pos_indices.extend(pos_indices)
-                # fetch negative pairs for triplet turple
+                # fetch negative pairs for triplet turple, but the negatives here contains the positives
                 if self.mode == 'train':
                     nD, negIdx = neigh.radius_neighbors(utmQ, self.negDistThr)
                 # get all idx unique in whole dataset
-                for q_seq_idx in range(len(qSeqKeys)):
+                for q_seq_idx in range(len(qSeqIdxs)):
                     q_frame_idxs = q_seq_idx
                     q_uniq_frame_idx = q_frame_idxs
                     p_uniq_frame_idxs = pos_indices[q_uniq_frame_idx]
                     # the query image has at least one positive
                     if len(p_uniq_frame_idxs) > 0:
                         p_seq_idx = np.unique(dbSeqIdxs[p_uniq_frame_idxs])
-                        # why all unique idx? for whole sequences data?
+                        # qIdx contains whole sequences, and the index is unique to whole (training or validation) datasets
                         self.qIdx.append(q_seq_idx + _lenQ)
                         self.pIdx.append(p_seq_idx + _lenDb)
                         # in training we have two thresholds, one for finding positives and one for finding images
@@ -172,17 +173,19 @@ class MSLS(Dataset):
                 qData = pd.read_csv(join(root_dir, subdir_img, city, 'query.csv'), index_col=0)
                 # load database data
                 dbData = pd.read_csv(join(root_dir, subdir_img, city, 'database.csv'), index_col=0)
-
-                qSeqKeys, qSeqIdxs, qSeqKeys_pc, qSeqIdxs_pc = self.arange_as_seq(qData, 
-                                                                                  join(root_dir, subdir_img, city),
-                                                                                  join(root_dir, subdir_submap, city))
+                # fetch query data, specifically data path
+                qSeqIdxs, qSeqKeys, qSeqKeys_pc = self.arange_as_seq(qData, 
+                                                                    join(root_dir, subdir_img, city),
+                                                                    join(root_dir, subdir_submap, city))
                 # load database data
-                dbSeqKeys, dbSeqIdxs, dbSeqKeys_pc, dbSeqIdxs_pc = self.arange_as_seq(dbData, 
-                                                                                      join(root_dir, subdir_img, city),
-                                                                                      join(root_dir, subdir_submap, city))
+                dbSeqIdxs, dbSeqKeys, dbSeqKeys_pc= self.arange_as_seq(dbData, 
+                                                                    join(root_dir, subdir_img, city),
+                                                                    join(root_dir, subdir_submap, city))
                 # here qImages is same as qSeqKeys, this kind of operation is designed for MSLS sequence retrieval task especially
                 self.qImages.extend(qSeqKeys)
                 self.dbImages.extend(dbSeqKeys)
+                self.qPcs.extend(qSeqKeys_pc)
+                self.dbPcs.extend(dbSeqKeys_pc)
         # whole sequence datas are gathered for batch optimization
         # Note that the number of submap is same as the number of images
         if len(self.qImages) == 0 or len(self.dbImages) == 0:
@@ -191,9 +194,6 @@ class MSLS(Dataset):
             print("Try more sequences")
             sys.exit()
         # cast to np.arrays for indexing during training
-        #print('type(self.qIdx):\t',type(self.qIdx))
-        #print('type(self.pIdx):\t',type(self.pIdx))
-        #print('type(self.nonNegIdx):\t',type(self.nonNegIdx))
         self.qIdx = np.asarray(self.qIdx)
         self.pIdx = np.asarray(self.pIdx)
         self.nonNegIdx = np.asarray(self.nonNegIdx)
@@ -208,16 +208,17 @@ class MSLS(Dataset):
 
         self.device = torch.device("cuda")
         self.threads = threads
-        self.bs = bs
-        # FIXME? MORE SAMPLING METHOD?
+        self.batch_size = batch_size
+
 
     @staticmethod
     def arange_as_seq(data, path_img, path_pc):
         '''
             arrange all query data(images, submaps) into list container
+            Return：
+                idx in csv file, image path, and pc full path in list container
         '''
-        seq_keys, seq_idxs = [], []
-        seq_keys_pc, seq_idxs_pc = [], []
+        seq_keys, seq_idxs, seq_keys_pc = [], [], []
         for seq_idx in data.index:
             # find surrounding frames in sequence
             # iloc is a function of pandas library for get the seq_idx record
@@ -229,16 +230,19 @@ class MSLS(Dataset):
             seq_keys.append(seq_key)
             seq_keys_pc.append(seq_key_pc)
             seq_idxs.append([seq_idx])
-            seq_idxs_pc.append([seq_idx])
-        return seq_keys, np.asarray(seq_idxs), seq_keys_pc, np.asarray(seq_idxs_pc)
+        return np.asarray(seq_idxs), seq_keys, seq_keys_pc
 
     def __len__(self):
         return len(self.triplets)
 
     def new_epoch(self):
         '''
-            Purpose: reset the subcache datas from all query indices, shuffle is utilized
-            random query subcache samples will be generated
+            Purpose: 
+                slice the whole query data into cached subsets based on the cached_queries number
+                reset the subcache data from all query indices, shuffle is utilized
+                random query subcache samples will be generated, whole query data will be forworded in a subset unit
+            Note:
+                Whole sequences data will be globed together into self.qIdx
         '''
         # find how many subsets we need to do 1 epoch
         self.nCacheSubset = math.ceil(len(self.qIdx) / self.cached_queries)
@@ -247,14 +251,18 @@ class MSLS(Dataset):
         random.shuffle(arr)
         arr = np.array(arr)
         # the subcached_indices will be extracted from shuffled qIdx
-        # the subset cached size should be large enough to contains sufficient samples
+        # the whole query data will be divided into subsets using self.cached_queries as interval
+        # subcache_indices contains the query data idx in current subset, and covers whole sequences in training datasets
+        # to be more aggressive, if cached_queries is smaller than 
         self.subcache_indices = np.array_split(arr, self.nCacheSubset)
         # reset subset counter
         self.current_subset = 0
 
     def update_subcache(self, net=None, net3d=None, outputdim=None):
         '''
-            Purpose: get self.triplets fufilled from subset data
+            Purpose: get self.triplets fufilled from current subset
+            Specifically,   get the query idxs from cached subset, the query data is randomly selected each epoch
+                            get its postive and negatives
         '''
         # reset triplets
         self.triplets = []
@@ -265,6 +273,7 @@ class MSLS(Dataset):
             self.current_subset = 0
         # take n (query,positive,negatives) triplet images from current cached subsets
         qidxs = np.asarray(self.subcache_indices[self.current_subset])
+        #print("len(qidxs):\t", qidxs) # should be same as self.cached_queries (or slightly smaller than, for the last subset)
         # build triplets based on randomly selection from data
         if net is None and net3d is None:
             for q in qidxs:
@@ -272,15 +281,17 @@ class MSLS(Dataset):
                 qidx = self.qIdx[q]
                 # get positives
                 pidxs = self.pIdx[q]
-                # choose a random positive (within positive range (default 10 m))
+                # choose a random positive (within positive range default self.posDistThr m)
                 pidx = np.random.choice(pidxs, size=1)[0]
                 # get negatives, 5 by default
                 while True:
+                    # randomly select negatives from whole sequences in training dataset
                     nidxs = np.random.choice(len(self.dbImages), size=self.nNeg)
+                    # FIXME: check whether the negaitves fall inside 20 threshold
                     # ensure that non of the choice negative images are within the negative range (default 25 m)
                     if sum(np.in1d(nidxs, self.nonNegIdx[q])) == 0:
                         break
-                # package the triplet and target
+                # package the triplet and target, all the indices are the indicex of csv file
                 triplet = [qidx, pidx, *nidxs]
                 target = [-1, 1] + [0] * len(nidxs)
                 self.triplets.append((triplet, target))
@@ -290,7 +301,7 @@ class MSLS(Dataset):
         # take their 5 positives in the database
         pidxs = np.unique([i for idx in self.pIdx[qidxs] for i in np.random.choice(idx, size=5, replace=False)])
         # print('pidxs:\t', pidxs)
-        print('len(pidxs):\t', len(pidxs))
+        #print('len(pidxs):\t', len(pidxs))
         nidxs = []
         while len(nidxs) < self.cached_queries // 10:
             # take m = 5*cached_queries is number of negative images
@@ -298,10 +309,10 @@ class MSLS(Dataset):
             # and make sure that there is no positives among them
             nidxs = nidxs[np.in1d(nidxs, np.unique(
                 [i for idx in self.nonNegIdx[qidxs] for i in idx]), invert=True)]
-            print('len(nidxs2):\t', len(nidxs))
+            #print('len(nidxs2):\t', len(nidxs))
         # make dataloaders for query, positive and negative images
-        opt = {'batch_size': 1, 'shuffle': False, 'persistent_workers': True, 
-               'num_workers': self.threads, 'pin_memory': True}  # self.bs
+        opt = {'batch_size': self.batch_size, 'shuffle': False, 'persistent_workers': True, 
+               'num_workers': self.threads, 'pin_memory': True}
         qloader = torch.utils.data.DataLoader(ImagesFromList(self.qImages[qidxs], transform=self.transform), **opt)
         ploader_pc = torch.utils.data.DataLoader(PcFromFiles(self.dbPcs[pidxs]), **opt)
         nloader_pc = torch.utils.data.DataLoader(PcFromFiles(self.dbPcs[nidxs]), **opt)
@@ -313,38 +324,38 @@ class MSLS(Dataset):
             qvecs = torch.zeros(len(qidxs), outputdim).to(self.device) # all query
             pvecs = torch.zeros(len(pidxs), outputdim).to(self.device) # all corresponding positives
             nvecs = torch.zeros(len(nidxs), outputdim).to(self.device) # all corresponding negatives
-            bs = opt['batch_size']
+            batch_size = opt['batch_size']
             # compute descriptors
             for i, batch in tqdm(enumerate(qloader), 
                                  desc='compute query descriptors', 
-                                 total=len(qidxs) // bs,
+                                 total=len(qidxs) // batch_size,
                                  position=2, leave=False):
                 X, _ = batch
                 image_encoding = net.encoder(X.to(self.device))
                 vlad_encoding = net.pool(image_encoding)
-                qvecs[i * bs:(i + 1) * bs, :] = vlad_encoding
+                qvecs[i * batch_size:(i + 1) * batch_size, :] = vlad_encoding
                 del batch, X, image_encoding, vlad_encoding
             # release memory
             del qloader
             for i, batch in tqdm(enumerate(ploader_pc), 
                                  desc='compute positive descriptors', 
-                                 total=len(pidxs) // bs,
+                                 total=len(pidxs) // batch_size,
                                  position=2, leave=False):
                 X, _ = batch
                 X = X.view((-1, 1, 4096, 3))
                 vlad_encoding = net3d(X.to(self.device))
-                pvecs[i * bs:(i + 1) * bs, :] = vlad_encoding
+                pvecs[i * batch_size:(i + 1) * batch_size, :] = vlad_encoding
                 del batch, X, vlad_encoding
             # release memory
             del ploader_pc
             for i, batch in tqdm(enumerate(nloader_pc), 
                                  desc='compute negative descriptors', 
-                                 total=len(nidxs) // bs,
+                                 total=len(nidxs) // batch_size,
                                  position=2, leave=False):
                 X, _ = batch
                 X = X.view((-1, 1, 4096, 3))
                 vlad_encoding = net3d(X.to(self.device))
-                nvecs[i * bs:(i + 1) * bs, :] = vlad_encoding
+                nvecs[i * batch_size:(i + 1) * batch_size, :] = vlad_encoding
                 del batch, X, vlad_encoding
             # release memory
             del nloader_pc
@@ -390,9 +401,9 @@ class MSLS(Dataset):
             hardestNeg = nidxs[cached_hardestNeg]
             # package the triplet and target
             triplet = [qidx, pidx, *hardestNeg]
-            if q < 20:
-                print('triplet:----------------------------------')
-                print(triplet)
+            # if q < 20:
+            #     print('triplet:----------------------------------')
+            #     print(triplet)
             target = [-1, 1] + [0] * len(hardestNeg)
             self.triplets.append((triplet, target))
         # release memory

@@ -10,9 +10,9 @@ from crossmodal.tools.datasets import input_transform
 
 
 def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, writer, 
-        epoch_num=0, write_tboard=False, pbar_position=0):
+        epoch_num=0, write_tboard=True, pbar_position=0):
     '''
-        Validation function
+        Validation function while training
     '''
     if device.type == 'cuda':
         cuda = True
@@ -114,7 +114,6 @@ def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, wr
             # faiss will return indices and distances
             _, preds = faiss_index.search(qTest[qEndPosTot:qEndPosTot+qEndPos, :], max(n_values) + 1)
             # stack the results for all test sequences
-            print("CityNum:\t",cityNum)
             if cityNum == 0:
                 predictions_t[i] = preds
             else:
@@ -137,6 +136,7 @@ def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, wr
                 if np.any(np.in1d(pred[:n], gt[qIx])):
                     correct_at_n[i:] += 1
                     break
+        # len(eval_dataset.qIdx) equals to predictions[test_index]
         recall_at_n[test_index] = correct_at_n / len(eval_dataset.qIdx)
     # 2d->2d
     for i, n in enumerate(n_values):

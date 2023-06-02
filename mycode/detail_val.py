@@ -32,10 +32,13 @@ Validation of NetVLAD, using the Mapillary Street-level Sequences Dataset.
 import numpy as np
 import torch
 import faiss
+import faiss.contrib.torch_utils
 import os
 import json
 import shutil
 from PIL import Image
+from matplotlib import pyplot as plt
+from prettytable import PrettyTable, MARKDOWN
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
@@ -51,23 +54,58 @@ def save_img(tensor, name):
     Image.fromarray(im).save(name + '.jpg')
 
 
-def compute_recall(gt, predictions, numQ, n_values, recall_str=''):
-    correct_at_n = np.zeros(len(n_values))
+def save_recall_curve(result_path:str, topN_recall, dataname:str, model_name:str):
+    fig, ax = plt.subplots(1, 1, dpi=300)
+    plt.rcParams['font.size'] = '12'
+    if (type(topN_recall).__name__ == 'dict'):
+        plt.plot(topN_recall.keys(), topN_recall.values())
+        # assign x axis markers based on dict, which indicates the k value
+        recall_list = []
+        for k in topN_recall:
+            recall_list.append(k)
+        plt.xticks(np.array(recall_list))
+    else:
+        plt.plot(np.arange(1, len(topN_recall) + 1), topN_recall)
+        plt.xticks(np.arange(1, len(topN_recall), 2))        
+    # fix y ticks
+    plt.yticks(np.arange(0, 110, 10))
+    plt.xlabel('Top @N')
+    plt.ylabel('Recall %')
+    plt.title('Recall on sequence {} from task {}'.format(dataname, model_name))
+    fig_name = 'Top_N_dataset{}_{}.png'.format(dataname, model_name)
+    plt.savefig(os.path.join(result_path, fig_name))
+
+
+def save_recall_table(k_values, recall_at_k, recall_str=""):
+    print('\n')
+    table = PrettyTable()
+    table.field_names = ['K']+[str(k) for k in k_values]
+    table.add_row(['Recall@K']+ [f'{v:.2f}' for v in recall_at_k])
+    # markdown style results
+    table.set_style(MARKDOWN)
+    print(table.get_string(title=f"Performance on {recall_str}"))
+    print('\n')
+
+
+def compute_recall(gt, predictions, numQ, k_values, recall_str=''):
+    correct_at_k = np.zeros(len(k_values))
     for qIx, pred in enumerate(predictions):
-        for i, n in enumerate(n_values):
-            # if in top N then also in top NN, where NN > N
-            if np.any(np.in1d(pred[:n], gt[qIx])):
-                correct_at_n[i:] += 1
+        for i, k in enumerate(k_values):
+            # if in top K then also in top NN, where NN > K
+            if np.any(np.in1d(pred[:k], gt[qIx])):
+                correct_at_k[i:] += 1
                 break
-    recall_at_n = correct_at_n / numQ
-    all_recalls = {}  # make dict for output
-    for i, n in enumerate(n_values):
-        all_recalls[n] = recall_at_n[i]
-        tqdm.write("====> Recall {}@{}: {:.4f}".format(recall_str, n, recall_at_n[i]))
-    return all_recalls
+    # len(predictions) equals to numQ
+    recall_at_k = correct_at_k / numQ * 100
+    for i, k in enumerate(k_values):
+        tqdm.write("====> {} Recall@{}: {:.2f}".format(recall_str, k, recall_at_k[i]))
+    return recall_at_k
 
 
-def val(eval_set, model2d, model3d, threads, config, result_path, pbar_position=0):
+def val(eval_set, model2d, model3d, threads, config, result_path, faiss_gpu=True, save_fig=True, pbar_position=0):
+    '''
+        Validation function offline, more close to test on single sequence
+    '''
     eval_set_queries = ImagesFromList(eval_set.qImages, transform=input_transform(train=False))
     eval_set_dbs = ImagesFromList(eval_set.dbImages, transform=input_transform(train=False))
     eval_set_queries_pc = PcFromFiles(eval_set.qPcs)
@@ -85,7 +123,6 @@ def val(eval_set, model2d, model3d, threads, config, result_path, pbar_position=
                                     num_workers=threads, batch_size=int(config['train']['cachebatchsize']),
                                     shuffle=False, pin_memory=True)
     # for each query get those within threshold distance
-    save_pic = True
     gt = eval_set.all_pos_indices
     gt_index = []
     gt_lists = []
@@ -98,7 +135,7 @@ def val(eval_set, model2d, model3d, threads, config, result_path, pbar_position=
     # save GT
     with open(os.path.join(result_path, "ground_truth.json"), 'w', encoding='utf-8') as file:
         file.write(json.dumps(gt_dic, indent=4))
-    n_values = [1, 5, 10, 20, 50]
+    k_values = [1, 5, 10, 20, 50]
     predictions_tmp = {}
     eval_set_query_num = len(eval_set_queries)
     no_feature = False
@@ -114,16 +151,16 @@ def val(eval_set, model2d, model3d, threads, config, result_path, pbar_position=
         model3d.eval()
         with torch.no_grad():
             tqdm.write('====> Extracting Features')
-            pool_size = 256
+            global_feature_dim = 256
             # image feature initialize
-            qFeat = np.empty((eval_set_query_num, pool_size), dtype=np.float32)
+            qFeat = np.empty((eval_set_query_num, global_feature_dim), dtype=np.float32)
             qFeat_FeatureMap = np.empty((eval_set_query_num, 512, 32, 64), dtype=np.float32)
-            dbFeat = np.empty((len(eval_set_dbs), pool_size), dtype=np.float32)
+            dbFeat = np.empty((len(eval_set_dbs), global_feature_dim), dtype=np.float32)
             dbFeat_FeatureMap = np.empty((len(eval_set_dbs), 512, 32, 64), dtype=np.float32)
             # pc feature initialize
-            qFeat_pc = np.empty((len(eval_set_queries_pc), pool_size), dtype=np.float32)
+            qFeat_pc = np.empty((len(eval_set_queries_pc), global_feature_dim), dtype=np.float32)
             qFeat_pc_FeatureMap = np.empty((len(eval_set_queries_pc), 1024, 4096, 1), dtype=np.float32)
-            dbFeat_pc = np.empty((len(eval_set_dbs_pc), pool_size), dtype=np.float32)
+            dbFeat_pc = np.empty((len(eval_set_dbs_pc), global_feature_dim), dtype=np.float32)
             dbFeat_pc_FeatureMap = np.empty((len(eval_set_dbs_pc), 1024, 4096, 1), dtype=np.float32)
             # each for loop corresponding to a batch data
             for feat, feat_fm, test_data_loader in zip([qFeat, dbFeat], [qFeat_FeatureMap, dbFeat_FeatureMap], [test_data_loader_queries, test_data_loader_dbs]):
@@ -179,9 +216,19 @@ def val(eval_set, model2d, model3d, threads, config, result_path, pbar_position=
             qEndPosTot = 0
             dbEndPosTot = 0
             for cityNum, (qEndPos, dbEndPos) in enumerate(zip(eval_set.qEndPosList, eval_set.dbEndPosList)):
-                faiss_index = faiss.IndexFlatL2(pool_size)
+                # build index
+                if faiss_gpu:
+                    res = faiss.StandardGpuResources()
+                    flat_config = faiss.GpuIndexFlatConfig()
+                    flat_config.useFloat16 = True
+                    flat_config.device = 0
+                    faiss_index = faiss.GpuIndexFlatL2(res, global_feature_dim, flat_config)
+                else:               
+                    faiss_index = faiss.IndexFlatL2(global_feature_dim)
                 faiss_index.add(dbTest[dbEndPosTot:dbEndPosTot+dbEndPos, :])
-                dis, preds = faiss_index.search(qTest[qEndPosTot:qEndPosTot+qEndPos, :], max(n_values)+1) # add +1
+                # search for each query data, could be done in a batch and return multi searching results by k_values
+                # faiss will return indices and distances
+                dis, preds = faiss_index.search(qTest[qEndPosTot:qEndPosTot+qEndPos, :], max(k_values)+1) # add +1
                 if cityNum == 0:
                     predictions_tmp[i] = preds
                 else:
@@ -229,18 +276,18 @@ def val(eval_set, model2d, model3d, threads, config, result_path, pbar_position=
         with open(path, 'w', encoding='utf-8') as file:
             file.write(json.dumps(pre_dic, indent=4))
     # save all specific results
-    if save_pic:
+    if save_fig:
         # randomly select 10 query samples
         save_num = 10
         save_ind = np.random.choice(eval_set_query_num, save_num, replace=False)
         # indx_p = 0
-        for indx_p, filename in enumerate(des):
-            task_path = os.path.join(result_path, filename)
+        for indx_p, task_name in enumerate(des):
+            task_path = os.path.join(result_path, task_name)
             if not os.path.exists(task_path):
                 os.mkdir(task_path)
             # save results for each query data respectively
             for ind in save_ind:
-                #print("query_idx:", save_ind)
+                # here the id is the csv id, not the image id
                 save_dir = os.path.join(task_path, str(ind))
                 if not os.path.exists(save_dir):
                     os.mkdir(save_dir)
@@ -302,31 +349,9 @@ def val(eval_set, model2d, model3d, threads, config, result_path, pbar_position=
                             save_vlad_path = os.path.join(save_dir_fm, 'vlad' + str(i))
                             save_img(enc_db.unsqueeze(0).view(1, 1024, 64, 64), save_enc_path)
                             save_img(vlad_db.view(16, 16).unsqueeze(0).unsqueeze(0), save_vlad_path)
-
-    recall_at_n = {}
-    for test_index in range(4):
-        correct_at_n = np.zeros(len(n_values))
-        for qIx, pred in enumerate(predictions[test_index]):
-            for i, n in enumerate(n_values):
-                # if in top N then also in top NN, where NN > N
-                if np.any(np.in1d(pred[:n], gt[qIx])):
-                    correct_at_n[i:] += 1
-                    break
-        recall_at_n[test_index] = correct_at_n / len(eval_set.qIdx)
-    # 2d->2d
-    for i, n in enumerate(n_values):
-        tqdm.write("====> 2D->2D/Recall@{}: {:.4f}".format(n, recall_at_n[0][i]))
-    # 2d->3d
-    all_recalls = {}  # make dict for output
-    for i, n in enumerate(n_values):
-        all_recalls[n] = recall_at_n[1][i]
-        tqdm.write("====> 2D->3D/Recall@{}: {:.4f}".format(n, recall_at_n[1][i]))
-    # 3d->2d
-    for i, n in enumerate(n_values):
-        tqdm.write("====> 3D->2D/Recall@{}: {:.4f}".format(n, recall_at_n[2][i]))
-    # 3d->3d
-    for i, n in enumerate(n_values):
-        tqdm.write("====> 3D->3D/Recall@{}: {:.4f}".format(n, recall_at_n[3][i]))
-    # save recalls in a table
-    
-    return all_recalls
+    # save recalls and directly save pr curves
+    for test_index, task in enumerate(des):
+        recall_at_k = compute_recall(gt=gt, predictions=predictions[test_index], 
+                                                 numQ=len(eval_set.qIdx), k_values=k_values, recall_str=task)
+        save_recall_curve(result_path, recall_at_k, eval_set.cities[0], task)
+        save_recall_table(k_values, recall_at_k, recall_str=task)

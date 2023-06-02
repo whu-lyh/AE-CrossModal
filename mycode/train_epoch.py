@@ -11,7 +11,7 @@ from mycode.msls import MSLS
 pdist = nn.PairwiseDistance(p=2)
 debug = False
 
-def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion, encoder_dim, device, epoch_num, opt, config, writer):
+def train_epoch(train_dataset, model2d, model3d, optimizer, optimizer3d, criterion, encoder_dim, device, epoch_num, opt, config, writer):
     if device.type == 'cuda':
         cuda = True
     else:
@@ -23,15 +23,16 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
     startIter = 1  # keep track of batch iter across subsets for logging
     # the number of total batches during in this epoch, each batch will contain batch_size samples
     nBatches = (len(train_dataset.qIdx) + int(config['train']['batchsize']) - 1) // int(config['train']['batchsize'])
-    print('Number of batches:\t', nBatches)
+    print('Number of total batches:\t', nBatches)
+    print('Number of triplets:\t', nBatches * int(config['train']['batchsize']))
     # train_dataset.nCacheSubset is number of the subsets in one single epoch
     # each batch will be optimized during each cached subset, while the subset data are randomly selected
-    for subIter in trange(train_dataset.nCacheSubset, desc='Training...Cache refresh'.rjust(15), position=1):
+    for subIter in trange(train_dataset.nCacheSubset, desc='Training...SubCache refreshing'.rjust(15), position=1):
         # global feature dimension, by default 256
         pool_global_feature_dim = 256
-        tqdm.write('====> Building Cache')
+        print("====> Building Cache")
         # generate triplets for training, here absolutely positive and negative tuplets are sampled
-        train_dataset.update_subcache(net=None, net3d=None, outputdim=pool_global_feature_dim)
+        train_dataset.update_subcache(net=model2d, net3d=model3d, outputdim=pool_global_feature_dim)
         # add train triplet dataset into dataloader, batch triplets will be loaded
         training_data_loader = DataLoader(dataset=train_dataset, num_workers=opt.threads,
                                           batch_size=int(config['train']['batchsize']), shuffle=True, 
@@ -41,12 +42,13 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
         # training_data_loader = torch.utils.data.DataLoader(dataset=train_dataset,batch_size=int(config['train']['batchsize']), num_workers=opt.threads,
         #         pin_memory=True, shuffle=True, collate_fn=MSLS.collate_fn, drop_last=True, sampler=train_sampler)
         # cuda memory check
-        tqdm.write('Allocated GPU memoey:\t' + humanbytes(torch.cuda.memory_allocated()))
-        tqdm.write('Cached GPU memoey:\t' + humanbytes(torch.cuda.memory_reserved()))
+        print("Allocated GPU memoey:\t", humanbytes(torch.cuda.memory_allocated()))
+        print("Cached GPU memoey:\t", humanbytes(torch.cuda.memory_reserved()))
         # forward neural networks, open BN and Droupout module
-        model.train()
+        model2d.train()
         model3d.train()
         # accumulate the loss, making sure the loss is stable at smaller batch_size(e.g. 2)
+        # this operation makes the batch size equals to accum_steps times of the raw value
         accum_steps = 64
         # calculate loss per query triplet in batch
         for iteration, (query, query_pc, positives, positives_pc, negatives, negatives_pcs, negCounts, indices) in \
@@ -68,8 +70,8 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
             # glob 2d data(tensor) to 2d model
             input_tuplet_img = torch.cat([query, positives, negatives])
             input_tuplet_img = input_tuplet_img.to(device)
-            image_encoding = model.encoder(input_tuplet_img)
-            output_feat_img = model.pool(image_encoding)
+            image_encoding = model2d.encoder(input_tuplet_img)
+            output_feat_img = model2d.pool(image_encoding)
             # there are 5 negatives for 2d image
             global_feat_img_query, global_feat_img_pos, global_feat_img_negs = torch.split(output_feat_img, [B, B, B*5])
             # glob 3d data(tensor) into 3d model
@@ -117,7 +119,7 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
             # sum loss
             loss_sm = loss_2dto2d + loss_3dto3d
             loss_cm = loss_2dto3d + loss_3dto2d
-            # weight loss
+            # weighted loss
             loss = 0.1 * loss_sm + loss_cm + loss_je
             # the total loss in this batch, the negative sample number should be used!!!
             loss /= nNeg.float().to(device)
@@ -165,8 +167,8 @@ def train_epoch(train_dataset, model, model3d, optimizer, optimizer3d, criterion
                 writer.add_scalar('Train/Loss_sm_triplet', batch_loss_sm, ((epoch_num - 1) * nBatches) + iteration)
                 # the total negatives in this batch
                 writer.add_scalar('Train/nNeg', nNeg, ((epoch_num - 1) * nBatches) + iteration)
-                tqdm.write('Allocated:\t' + humanbytes(torch.cuda.memory_allocated()))
-                tqdm.write('Cached:\t' + humanbytes(torch.cuda.memory_reserved()))
+                print("Allocated:\t", humanbytes(torch.cuda.memory_allocated()))
+                print("Cached:\t", humanbytes(torch.cuda.memory_reserved()))
         # start iteration in whole epoch, increase at batch_size step
         startIter += len(training_data_loader)
         del training_data_loader, loss

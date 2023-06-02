@@ -57,3 +57,13 @@ def input_transform(train):
             # transforms.Normalize(mean=[0.056020, 0.064157, 0.067195],
             # std=[0.172305, 0.192164, 0.204675]),
     ])
+
+
+def configure_transform(image_dim, meta):
+	normalize = transforms.Normalize(mean=meta['mean'], std=meta['std'])
+	transform = transforms.Compose([
+		transforms.Resize(image_dim),
+		transforms.ToTensor(),
+		normalize,
+	])
+	return transform

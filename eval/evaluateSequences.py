@@ -22,7 +22,7 @@ def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d,
     config['train'] = {'cachebatchsize': 10}   
     if not os.path.exists(opt.resume_path2d) or not os.path.exists(opt.resume_path3d):
         print("Dummy prediction test")
-        validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), bs=10, threads=6, margin=0.1, posDistThr=20)
+        validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), batch_size=10, threads=6, margin=0.1, posDistThr=20)
         recalls = val(validation_dataset, model2d=None, model3d=None, config=config, threads=0, result_path=save_path, pbar_position=1)
         return
     # model construction  
@@ -68,13 +68,11 @@ def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d,
     model2d = model2d.to(device)
     model3d = model3d.to(device)
     validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), bs=10, threads=6, margin=0.1, posDistThr=20)
-    recalls = val(validation_dataset, model2d, model3d, config=config, threads=0, result_path=save_path, pbar_position=1)
-    if debug:
-        print(recalls)
+    val(validation_dataset, model2d, model3d, config=config, threads=0, result_path=save_path, save_fig=True, pbar_position=1)
         
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='CrossModal-train')
+    parser = argparse.ArgumentParser(description='CrossModal-evaluation-sequence')
     parser.add_argument('--dataset_root_dir', type=str, default='/data-lyh/KITTI360', required=True, 
                         help='Root directory of dataset')
     parser.add_argument('--save_path', type=str, default='/log/checkpoints', required=True, 

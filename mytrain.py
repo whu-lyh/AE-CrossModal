@@ -163,7 +163,7 @@ if __name__ == "__main__":
             print('===> Finding cluster centroids')
             print('===> Loading dataset(s) for clustering')
             train_dataset = MSLS(opt.dataset_root_dir, mode='train', transform=input_transform(train=False),
-                                 bs=int(config['train']['cachebatchsize']), threads=opt.threads, margin=float(config['train']['margin']))
+                                 batch_size=int(config['train']['cachebatchsize']), threads=opt.threads, margin=float(config['train']['margin']))
             print(train_dataset)
             model = model.to(device)
             print('===> Calculating descriptors and clusters')
@@ -229,10 +229,10 @@ if __name__ == "__main__":
     print('===> Loading dataset(s)')
     train_dataset = MSLS(opt.dataset_root_dir, mode='train', nNeg=int(config['train']['nNeg']),
                          transform=input_transform(train=True),
-                         bs=int(config['train']['cachebatchsize']), threads=opt.threads,
+                         batch_size=int(config['train']['cachebatchsize']), threads=opt.threads,
                          margin=float(config['train']['margin']))
     validation_dataset = MSLS(opt.dataset_root_dir, mode='val', transform=input_transform(train=False),
-                              bs=int(config['train']['cachebatchsize']), threads=opt.threads,
+                              batch_size=int(config['train']['cachebatchsize']), threads=opt.threads,
                               margin=float(config['train']['margin']), posDistThr=20)
     print('===> Training set: query number:', len(train_dataset.qIdx))
     print('===> Validation set, query number:', len(validation_dataset.qIdx))
