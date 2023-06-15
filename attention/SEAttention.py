@@ -3,7 +3,6 @@ import torch
 from torch import nn
 from torch.nn import init
 
-
 class SEAttention(nn.Module):
     '''
         Details in: "Squeeze-and-Excitation Networks"

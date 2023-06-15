@@ -9,7 +9,6 @@ import torch.nn.functional as F
 import math
 from attention.SEAttention import SEAttention
 
-
 class NetVLADLoupe(nn.Module):
     def __init__(self, feature_size, max_samples, cluster_size, output_dim,
                  gating=True, add_batch_norm=True, is_training=True):
@@ -42,6 +41,7 @@ class NetVLADLoupe(nn.Module):
         if gating:
             self.context_gating = GatingContext(
                 output_dim, add_batch_norm=add_batch_norm)
+
 
     def forward(self, x):
         x = x.transpose(1, 3).contiguous()
@@ -252,7 +252,6 @@ class PointNetVlad(nn.Module):
         self.net_vlad = NetVLADLoupe(feature_size=1024, max_samples=num_points, cluster_size=64,
                                      output_dim=output_dim, gating=True, add_batch_norm=True,
                                      is_training=True)
-
     def forward(self, x):
         x = self.point_net(x)
         x = self.net_vlad(x)
@@ -270,7 +269,6 @@ class PointNetVlad_attention(nn.Module):
         self.net_vlad = NetVLADLoupe(feature_size=1024, max_samples=num_points, cluster_size=64,
                                      output_dim=output_dim, gating=True, add_batch_norm=True,
                                      is_training=True)
-
     def forward(self, x):
         x = self.point_net(x)
         x = self.attention(x)

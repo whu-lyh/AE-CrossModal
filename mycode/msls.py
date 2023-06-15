@@ -17,8 +17,8 @@ import random
 
 # 03 is too short to find triplets
 default_cities = {
-    'train': ["0", "2", "4", "5", "6", "7", "9", "10"],
-    'val': ["3"],
+    'train': ["0", "2", "3", "5", "6", "7", "9", "10"],
+    'val': ["0"],
     'test': []
 }
 
@@ -60,7 +60,7 @@ class PcFromFiles(Dataset):
 
 class MSLS(Dataset):
     def __init__(self, root_dir, cities='', nNeg=5, transform=None, mode='train', 
-                 posDistThr=15, negDistThr=35, cached_queries=4000, cached_negatives=25000,
+                 posDistThr=15, negDistThr=30, cached_queries=500, cached_negatives=2500,
                  batch_size=2, threads=8, margin=0.2):
         # initializing
         assert mode in ('train', 'val', 'test')
@@ -82,7 +82,8 @@ class MSLS(Dataset):
         self.nonNegIdx = [] # neg
         self.qEndPosList = []
         self.dbEndPosList = []
-        self.all_pos_indices = [] # gt
+        self.all_pos_indices = [] # gt indices
+        self.all_pos_dists = [] # gt distances
         # hyper-parameters
         self.nNeg = nNeg # negative number
         self.margin = margin # triplet margin
@@ -147,6 +148,7 @@ class MSLS(Dataset):
                 pos_distances, pos_indices = neigh.radius_neighbors(utmQ, self.posDistThr)
                 # the nearest idxes will be the ground truth when val mode
                 self.all_pos_indices.extend(pos_indices)
+                self.all_pos_dists.extend(pos_distances)
                 # fetch negative pairs for triplet turple, but the negatives here contains the positives
                 if self.mode == 'train':
                     nD, negIdx = neigh.radius_neighbors(utmQ, self.negDistThr)
@@ -168,7 +170,7 @@ class MSLS(Dataset):
                             n_uniq_frame_idxs = negIdx[q_uniq_frame_idx]
                             n_seq_idx = np.unique(dbSeqIdxs[n_uniq_frame_idxs])
                             self.nonNegIdx.append(n_seq_idx + _lenDb)
-
+            # till now, useless(while training or validation) but test visualization
             elif self.mode in ['test']:
                 qData = pd.read_csv(join(root_dir, subdir_img, city, 'query.csv'), index_col=0)
                 # load database data
@@ -253,7 +255,7 @@ class MSLS(Dataset):
         # the subcached_indices will be extracted from shuffled qIdx
         # the whole query data will be divided into subsets using self.cached_queries as interval
         # subcache_indices contains the query data idx in current subset, and covers whole sequences in training datasets
-        # to be more aggressive, if cached_queries is smaller than 
+        # to be more aggressive, if cached_queries equals to 1, there will be only 1 sample in cachedsubset
         self.subcache_indices = np.array_split(arr, self.nCacheSubset)
         # reset subset counter
         self.current_subset = 0
@@ -271,9 +273,9 @@ class MSLS(Dataset):
         if self.current_subset >= len(self.subcache_indices):
             tqdm.write('Reset epoch - FIX THIS LATER!')
             self.current_subset = 0
-        # take n (query,positive,negatives) triplet images from current cached subsets
+        # take the current subset cached datas as query which are randomly divided and selected
         qidxs = np.asarray(self.subcache_indices[self.current_subset])
-        #print("len(qidxs):\t", qidxs) # should be same as self.cached_queries (or slightly smaller than, for the last subset)
+        #print("len(qidxs):\t", len(qidxs)) # should be same as self.cached_queries (or slightly smaller than, for the last subset)
         # build triplets based on randomly selection from data
         if net is None and net3d is None:
             for q in qidxs:
@@ -287,29 +289,26 @@ class MSLS(Dataset):
                 while True:
                     # randomly select negatives from whole sequences in training dataset
                     nidxs = np.random.choice(len(self.dbImages), size=self.nNeg)
-                    # FIXME: check whether the negaitves fall inside 20 threshold
                     # ensure that non of the choice negative images are within the negative range (default 25 m)
+                    # while-loop check until non nidx existed in self.nonNegIdx[q], due to the nonNegIdx is the samples inside negative range
                     if sum(np.in1d(nidxs, self.nonNegIdx[q])) == 0:
                         break
-                # package the triplet and target, all the indices are the indicex of csv file
+                # package the triplet and target, all the indices are the indicex of csv file, not data idx
                 triplet = [qidx, pidx, *nidxs]
                 target = [-1, 1] + [0] * len(nidxs)
                 self.triplets.append((triplet, target))
             # increment subset counter
             self.current_subset += 1
             return
-        # take their 5 positives in the database
+        # take n=5 positives in the database
         pidxs = np.unique([i for idx in self.pIdx[qidxs] for i in np.random.choice(idx, size=5, replace=False)])
-        # print('pidxs:\t', pidxs)
-        #print('len(pidxs):\t', len(pidxs))
         nidxs = []
         while len(nidxs) < self.cached_queries // 10:
             # take m = 5*cached_queries is number of negative images
+            self.cached_negatives = min(self.cached_negatives, len(self.dbImages))
             nidxs = np.random.choice(len(self.dbImages), self.cached_negatives, replace=False)
             # and make sure that there is no positives among them
-            nidxs = nidxs[np.in1d(nidxs, np.unique(
-                [i for idx in self.nonNegIdx[qidxs] for i in idx]), invert=True)]
-            #print('len(nidxs2):\t', len(nidxs))
+            nidxs = nidxs[np.in1d(nidxs, np.unique([i for idx in self.nonNegIdx[qidxs] for i in idx]), invert=True)]
         # make dataloaders for query, positive and negative images
         opt = {'batch_size': self.batch_size, 'shuffle': False, 'persistent_workers': True, 
                'num_workers': self.threads, 'pin_memory': True}

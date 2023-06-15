@@ -9,5 +9,5 @@ configparser
 shutilwhich
 h5py
 faiss-gpu
-faiss-cpu
 prettytable
+matplotlib

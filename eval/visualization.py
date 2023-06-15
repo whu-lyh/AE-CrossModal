@@ -1,5 +1,4 @@
 
-import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -26,25 +25,25 @@ def visualize_triplets(batch):
     '''
     # fetch data from single batch
     query, query_pc, positive_img, positive_pc, negatives_imgs, negatives_pcs, idxs = batch
-    # batch size
+    # batch number, query size should be torch.Size([batch_size, 3, 512, 1024])
     bs = query.shape[0]
     # total number of data(image size same as pc size) in a single batch
+    # size should be BxNeg, batch_size sample * number of negatives
     N = len(idxs)
-    #print(N)
     for bsi in range(bs):
         # initialize plt
         plt.figure(figsize=(80, 60))
         # show query image
         plt.subplot(1, N, 1)
         plt.imshow(denormalize(pil2opencv(query[bsi])))
-        plt.title("batch {} => query".format(bsi))
+        plt.title("batch {} => query".format(bsi), fontsize=28)
         # show positive
         plt.subplot(1, N, 2)
         plt.imshow(denormalize(pil2opencv(positive_img[bsi])))
-        plt.title("batch {} => positive".format(bsi))
+        plt.title("batch {} => positive".format(bsi), fontsize=28)
         # # show negatives
         for ni in range(negatives_imgs.shape[1]):
             plt.subplot(1, N, 3 + ni)
             plt.imshow(denormalize(pil2opencv(negatives_imgs[bsi][ni])))
-            plt.title("batch {} => negatives {}".format(bsi, ni))
+            plt.title("batch {} => negatives {}".format(bsi, ni), fontsize=28)
         plt.show()

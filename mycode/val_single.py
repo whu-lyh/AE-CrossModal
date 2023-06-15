@@ -32,7 +32,7 @@ Validation of NetVLAD, using the Mapillary Street-level Sequences Dataset.
 import numpy as np
 import torch
 import faiss
-from tqdm.auto import tqdm
+from tqdm import tqdm
 from torch.utils.data import DataLoader
 from crossmodal.training_tools.msls import ImagesFromList
 from mycode.msls import PcFromFiles

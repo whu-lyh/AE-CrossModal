@@ -23,8 +23,8 @@ def train_epoch(train_dataset, model2d, model3d, optimizer, optimizer3d, criteri
     startIter = 1  # keep track of batch iter across subsets for logging
     # the number of total batches during in this epoch, each batch will contain batch_size samples
     nBatches = (len(train_dataset.qIdx) + int(config['train']['batchsize']) - 1) // int(config['train']['batchsize'])
-    print('Number of total batches:\t', nBatches)
-    print('Number of triplets:\t', nBatches * int(config['train']['batchsize']))
+    #tqdm.write('Number of total batches:\t', nBatches)
+    #tqdm.write('Number of triplets:\t', nBatches * int(config['train']['batchsize']))
     # train_dataset.nCacheSubset is number of the subsets in one single epoch
     # each batch will be optimized during each cached subset, while the subset data are randomly selected
     for subIter in trange(train_dataset.nCacheSubset, desc='Training...SubCache refreshing'.rjust(15), position=1):
@@ -32,18 +32,23 @@ def train_epoch(train_dataset, model2d, model3d, optimizer, optimizer3d, criteri
         pool_global_feature_dim = 256
         print("====> Building Cache")
         # generate triplets for training, here absolutely positive and negative tuplets are sampled
-        train_dataset.update_subcache(net=model2d, net3d=model3d, outputdim=pool_global_feature_dim)
+        if epoch_num > 10:
+            train_dataset.update_subcache(net=model2d, net3d=model3d, outputdim=pool_global_feature_dim)
+        else:
+             train_dataset.update_subcache(net=None, net3d=None, outputdim=pool_global_feature_dim)
+        # this online manner cost much more time, do not use
+        # train_dataset.update_subcache(net=model2d, net3d=model3d, outputdim=pool_global_feature_dim)
         # add train triplet dataset into dataloader, batch triplets will be loaded
         training_data_loader = DataLoader(dataset=train_dataset, num_workers=opt.threads,
                                           batch_size=int(config['train']['batchsize']), shuffle=True, 
                                           collate_fn=MSLS.collate_fn, pin_memory=cuda)
-        
+        # distributed
         # train_sampler = torch.utils.data.distributed.DistributedSampler(dataset=train_dataset)     
         # training_data_loader = torch.utils.data.DataLoader(dataset=train_dataset,batch_size=int(config['train']['batchsize']), num_workers=opt.threads,
         #         pin_memory=True, shuffle=True, collate_fn=MSLS.collate_fn, drop_last=True, sampler=train_sampler)
         # cuda memory check
-        print("Allocated GPU memoey:\t", humanbytes(torch.cuda.memory_allocated()))
-        print("Cached GPU memoey:\t", humanbytes(torch.cuda.memory_reserved()))
+        #tqdm.write("Allocated GPU memoey:\t", humanbytes(torch.cuda.memory_allocated()))
+        #tqdm.write("Cached GPU memoey:\t", humanbytes(torch.cuda.memory_reserved()))
         # forward neural networks, open BN and Droupout module
         model2d.train()
         model3d.train()
@@ -134,6 +139,7 @@ def train_epoch(train_dataset, model2d, model3d, optimizer, optimizer3d, criteri
                 optimizer.step()
                 optimizer.zero_grad()
                 optimizer3d.step()
+                # zero out gradients so we can accumulate new ones over batches
                 optimizer3d.zero_grad()
             # release memory
             del input_tuplet_img, image_encoding, output_feat_img, global_feat_img_query, global_feat_img_pos, global_feat_img_negs
@@ -167,8 +173,8 @@ def train_epoch(train_dataset, model2d, model3d, optimizer, optimizer3d, criteri
                 writer.add_scalar('Train/Loss_sm_triplet', batch_loss_sm, ((epoch_num - 1) * nBatches) + iteration)
                 # the total negatives in this batch
                 writer.add_scalar('Train/nNeg', nNeg, ((epoch_num - 1) * nBatches) + iteration)
-                print("Allocated:\t", humanbytes(torch.cuda.memory_allocated()))
-                print("Cached:\t", humanbytes(torch.cuda.memory_reserved()))
+                #tqdm.write("GPU Allocated:\t", humanbytes(torch.cuda.memory_allocated()))
+                #tqdm.write("GPU Cached:\t", humanbytes(torch.cuda.memory_reserved()))
         # start iteration in whole epoch, increase at batch_size step
         startIter += len(training_data_loader)
         del training_data_loader, loss

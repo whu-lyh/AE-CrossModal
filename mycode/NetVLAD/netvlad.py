@@ -81,7 +81,6 @@ class NetVLAD(nn.Module):
         self.conv.weight = nn.Parameter(torch.from_numpy(self.alpha * clstsAssign).unsqueeze(2).unsqueeze(3))
         self.conv.bias = None
 
-
     def forward(self, x):
         N, C = x.shape[:2]
 

@@ -5,6 +5,7 @@ from datetime import datetime
 sys.path.append("..")
 import argparse
 import torch
+import torch.nn as nn
 from mycode.detail_val import val
 from mycode.msls import MSLS
 from mycode.NetVLAD.netvlad import get_model_netvlad
@@ -19,11 +20,11 @@ def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d,
     # mandatory in cuda
     device = torch.device("cuda")
     config = {'network': 'spherical', 'num_clusters': 64, 'pooling': 'netvlad', 'vladv2': False}
-    config['train'] = {'cachebatchsize': 10}   
+    config['train'] = {'cachebatchsize': 40}   
     if not os.path.exists(opt.resume_path2d) or not os.path.exists(opt.resume_path3d):
         print("Dummy prediction test")
-        validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), batch_size=10, threads=6, margin=0.1, posDistThr=20)
-        recalls = val(validation_dataset, model2d=None, model3d=None, config=config, threads=0, result_path=save_path, pbar_position=1)
+        validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), batch_size=config['train']['cachebatchsize'], threads=8, posDistThr=20)
+        recalls = val(validation_dataset, model2d=None, model3d=None, batch_size=20, threads=8, result_path=save_path, pbar_position=1)
         return
     # model construction  
     if network == 'spherical':
@@ -39,7 +40,7 @@ def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d,
     if patchnv:
         model2d = get_model(encoder, encoder_dim, config, append_pca_layer=False)
     else:
-        model2d = get_model_netvlad(encoder, encoder_dim, config, attention)
+        model2d = get_model_netvlad(encoder, encoder_dim, config, attention=attention)
     if attention:
         # attention mechanism by AE-Spherical
         model3d = PNV.PointNetVlad_attention(global_feat=True, feature_transform=True, max_pool=False, output_dim=256, num_points=4096)
@@ -51,13 +52,26 @@ def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d,
     if debug:
         print("chepoint2d")
         print(checkpoint.keys())
+        for key in checkpoint.keys():
+            print(key)
+            #if key is not 'state_dict':
+                #print(checkpoint[key])
         print("chepoint3d")
         print(checkpoint3d.keys())
+        for key in checkpoint3d.keys():
+            print(key)
+            # block the parameters that are too large for visualization
+            #if key is not 'state_dict':
+                #print(checkpoint3d[key])
         # for name, param in model2d.named_parameters():
         #     print(name, '      ', param.size())
         # for name, param in model3d.named_parameters():
-        #     print(name, '      ', param.size())
-    model2d.load_state_dict(checkpoint['state_dict'])
+        #     print(name, '      ', param.size())  
+    if torch.cuda.device_count() > 1:
+        model2d = nn.DataParallel(model2d).cuda()
+    model2d.state_dict = checkpoint
+    print(model2d)
+    #model2d.load_state_dict(checkpoint)
     if debug:
         print("pre_model2d")
         print(model2d)
@@ -67,8 +81,9 @@ def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d,
         print(model3d) 
     model2d = model2d.to(device)
     model3d = model3d.to(device)
-    validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), bs=10, threads=6, margin=0.1, posDistThr=20)
-    val(validation_dataset, model2d, model3d, config=config, threads=0, result_path=save_path, save_fig=True, pbar_position=1)
+    # for evaluation, batch size could be 80 at 24GB GPU
+    validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), batch_size=config['train']['cachebatchsize'], threads=8, posDistThr=20)
+    val(validation_dataset, model2d, model3d, batch_size=20, threads=8, result_path=save_path, faiss_gpu=True, save_fig=False, pbar_position=1, debug=debug)
         
 
 if __name__ == "__main__":
@@ -76,7 +91,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset_root_dir', type=str, default='/data-lyh/KITTI360', required=True, 
                         help='Root directory of dataset')
     parser.add_argument('--save_path', type=str, default='/log/checkpoints', required=True, 
-                        help='Path to save checkpoints to')
+                        help='Path to save checkpoints')
     parser.add_argument('--network', type=str, default='spherical', 
                         help='2D CNN network, e.g. vgg, resnet, spherical')
     parser.add_argument('--resume_path2d', type=str, default='', required=True, 
@@ -91,14 +106,16 @@ if __name__ == "__main__":
                         help='If true, print additional informations.')
     opt = parser.parse_args()
     print(opt)
-    opt.save_path = os.path.join(opt.save_path, datetime.now().strftime('Results_%b%d_%H_%M_%S'))
+    opt.save_path = os.path.join(opt.save_path, datetime.now().strftime('EvaluationResults_%b%d_%H_%M_%S'))
     if not os.path.exists(opt.save_path):
         os.makedirs(opt.save_path)
+    attention = False
     if opt.attention:
         attention = True
     patchnv = False
     if opt.patchnv:
         patchnv = True
+    debug = False
     if opt.debug:
         debug = True
     evaluate(network=opt.network, dataset_root_dir=opt.dataset_root_dir, save_path=opt.save_path, 
