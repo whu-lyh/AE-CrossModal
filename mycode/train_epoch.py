@@ -32,10 +32,10 @@ def train_epoch(train_dataset, model2d, model3d, optimizer, optimizer3d, criteri
         pool_global_feature_dim = 256
         print("====> Building Cache")
         # generate triplets for training, here absolutely positive and negative tuplets are sampled
-        if epoch_num > 10:
-            train_dataset.update_subcache(net=model2d, net3d=model3d, outputdim=pool_global_feature_dim)
-        else:
-             train_dataset.update_subcache(net=None, net3d=None, outputdim=pool_global_feature_dim)
+        # if epoch_num > 10:
+        #     train_dataset.update_subcache(net=model2d, net3d=model3d, outputdim=pool_global_feature_dim)
+        # else:
+        train_dataset.update_subcache(net=None, net3d=None, outputdim=pool_global_feature_dim)
         # this online manner cost much more time, do not use
         # train_dataset.update_subcache(net=model2d, net3d=model3d, outputdim=pool_global_feature_dim)
         # add train triplet dataset into dataloader, batch triplets will be loaded

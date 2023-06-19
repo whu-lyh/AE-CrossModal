@@ -17,8 +17,8 @@ import random
 
 # 03 is too short to find triplets
 default_cities = {
-    'train': ["0", "2", "3", "5", "6", "7", "9", "10"],
-    'val': ["0"],
+    'train': ["0", "2", "4", "5", "6", "7", "9", "10"],
+    'val': ["3"],
     'test': []
 }
 
@@ -60,8 +60,8 @@ class PcFromFiles(Dataset):
 
 class MSLS(Dataset):
     def __init__(self, root_dir, cities='', nNeg=5, transform=None, mode='train', 
-                 posDistThr=15, negDistThr=30, cached_queries=500, cached_negatives=2500,
-                 batch_size=2, threads=8, margin=0.2):
+                 posDistThr=15, negDistThr=30, cached_queries=1000, cached_negatives=2500,
+                 batch_size=2, threads=8, margin=0.1):
         # initializing
         assert mode in ('train', 'val', 'test')
         # check sequences to be processed

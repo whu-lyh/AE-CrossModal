@@ -32,7 +32,7 @@ from crossmodal.tools.datasets import input_transform
 from crossmodal.models.models_generic import get_backend, get_model
 
 # single GPU
-os.environ['CUDA_VISIBLE_DEVICES'] = "2"
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
 # multi GPUs
 #os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
 
