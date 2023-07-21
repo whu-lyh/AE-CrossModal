@@ -33,9 +33,10 @@ def input_transform(train):
             transforms.RandomApply([
                 transforms.ColorJitter(brightness=0.5, contrast=0.5, saturation=0.4, hue=0.3),
                 transforms.RandomAffine(degrees=(-5, 5), translate=(0.1, 0.1))], p=0.5),
-            #transforms.Resize(resize),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.396197, 0.452953, 0.490031],
+                transforms.RandomHorizontalFlip(p=0.5),
+                #transforms.Resize(resize),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.396197, 0.452953, 0.490031],
                                  std=[0.315778, 0.343629, 0.369563]),
             # pytorch statistic information
             # transforms.Normalize(mean=[0.485, 0.456, 0.406],

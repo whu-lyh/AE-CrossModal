@@ -150,7 +150,7 @@ def train_epoch(train_dataset, model2d, model3d, optimizer, optimizer3d, criteri
             epoch_loss += batch_loss
             batch_loss_je = loss_je_t.item()
             batch_loss_cm = loss_cm_t.item()
-            batch_loss_sm= loss_sm_t.item()
+            batch_loss_sm = loss_sm_t.item()
 
             # check model
             # for name, param in model3d.named_parameters():

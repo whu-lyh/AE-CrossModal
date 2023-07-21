@@ -45,7 +45,7 @@ from torchvision.utils import make_grid
 from mycode.msls import ImagesFromList
 from mycode.msls import PcFromFiles
 from crossmodal.tools.datasets import input_transform
-
+from eval.visualization import tsne_visualization
 
 def save_img(tensor, name):
     tensor = tensor.permute((1, 0, 2, 3))
@@ -141,8 +141,11 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
             gt_dist_lists.append(pics)
         gt_dist_dic = dict(zip(gt_index, gt_dist_lists))
         with open(os.path.join(result_path, "ground_truth_dists.json"), 'w', encoding='utf-8') as file:
-            file.write(json.dumps(gt_dist_dic, indent=4))      
+            file.write(json.dumps(gt_dist_dic, indent=4))
     k_values = [1, 5, 10, 20, 50]
+    des = ['2dto2d', '2dto3d', '3dto2d', '3dto3d']
+    # top1_percent = int(len(eval_set_queries)) * 0.01 + 1
+    # k_values.append(top1_percent)
     predictions_tmp = {}
     predictions_dists_tmp = {} # no further usage now
     eval_set_query_num = len(eval_set_queries)
@@ -199,12 +202,13 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
                     input_data = input_data.float()
                     input_data = input_data.view((-1, 1, 4096, 3))
                     input_data = input_data.to("cuda")
-                    pc_enc = model3d.point_net(input_data)
-                    vlad_encoding = model3d.net_vlad(pc_enc)
+                    # pc_enc = model3d.point_net(input_data)
+                    # vlad_encoding = model3d.net_vlad(pc_enc)
+                    vlad_encoding = model3d(input_data)
                     # all pc query and database will be calculated in a batch parallel manner
                     feat[indices.detach().numpy(), :] = vlad_encoding.detach().cpu().numpy()
                     # release memory
-                    del input_data, pc_enc, vlad_encoding
+                    del input_data, vlad_encoding
         del test_data_loader_queries, test_data_loader_dbs, test_data_loader_queries_pc, test_data_loader_dbs_pc
         tqdm.write('====> Building faiss index')
         tqdm.write('====> Calculating recall @ N')
@@ -235,6 +239,8 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
                     faiss_index = faiss.IndexFlatL2(global_feature_dim)
                 # add the current sequence database data into faiss
                 faiss_index.add(dbTest[dbEndPosTot:dbEndPosTot+dbEndPos, :])
+                tsne_visualization(result_path, des[i] + "_query", qTest[qEndPosTot:qEndPosTot+qEndPos, :])
+                tsne_visualization(result_path, des[i] + "_database", dbTest[dbEndPosTot:dbEndPosTot+dbEndPos, :])
                 # search for each query data, could be done in a batch and return multi searching results by k_values(number check)
                 # faiss will return indices and distances
                 dis, preds = faiss_index.search(qTest[qEndPosTot:qEndPosTot+qEndPos, :], max(k_values) + 1) # add +1
@@ -247,12 +253,15 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
                 qEndPosTot += qEndPos
                 dbEndPosTot += dbEndPos
     # fetch prediction results
-    des = ['2dto2d', '2dto3d', '3dto2d', '3dto3d']
     predictions = {}
-    predictions[0] = [list(pre[0:]) for pre in predictions_tmp[0]] # 2d->2d
+    predictions[0] = [list(pre[:50]) for pre in predictions_tmp[0]] # 2d->2d
     predictions[1] = [list(pre[:50]) for pre in predictions_tmp[1]] # 2d->3d
     predictions[2] = [list(pre[:50]) for pre in predictions_tmp[2]] # 3d->2d
-    predictions[3] = [list(pre[0:]) for pre in predictions_tmp[3]] # 3d->3d
+    predictions[3] = [list(pre[:50]) for pre in predictions_tmp[3]] # 3d->3d
+    # predictions[0] = gt # 2d->2d
+    # predictions[1] = gt # 2d->3d
+    # predictions[2] = gt # 3d->2d
+    # predictions[3] = gt # 3d->3d
     # sampled query data
     q_ind = []
     q_ind_imgs_path = []
@@ -361,9 +370,9 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
                             save_img(enc_db.unsqueeze(0).view(1, 1024, 64, 64), save_enc_path)
                             save_img(vlad_db.view(16, 16).unsqueeze(0).unsqueeze(0), save_vlad_path)
     # save recalls and directly save pr curves
-    for test_index, task in enumerate(des):
-        recall_at_k = compute_recall(gt=gt, predictions=predictions[test_index], 
-                                                 numQ=len(eval_set.qIdx), k_values=k_values, task_name=task)
+    for task_index, task in enumerate(des):
+        recall_at_k = compute_recall(gt=gt, predictions=predictions[task_index], 
+                                    numQ=len(eval_set.qIdx), k_values=k_values, task_name=task)
         
         save_recall_curve(k_values, recall_at_k, result_path, dataname=eval_set.cities[0], model_name=task)
         save_recall_table(k_values, recall_at_k, task_name=task)

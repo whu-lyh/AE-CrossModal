@@ -9,10 +9,10 @@
 #     --debug
 
 # remote server
-python evaluateSequences.py --dataset_root_dir "/root/public/data/Kitti/kitti360" \
-    --save_path "/root/lyh/code/AE-CrossModal/eval/output_lyh" \
-    --resume_path2d "/root/lyh/code/AE-CrossModal/weights/checkpoint_epoch49.pth.tar" \
-    --resume_path3d "/root/lyh/code/AE-CrossModal/weights/checkpoint_epoch49.ckpt" \
+python evaluateSequences.py --dataset_root_dir "/workspace/kitti360" \
+    --save_path "/workspace/AE-CrossModal/eval/output_lyh" \
+    --resume_path2d "/workspace/AE-CrossModal/log/checkpoints/Jul06_04_57_54_train3_val3/checkpoints/model_best.pth.tar" \
+    --resume_path3d "/workspace/AE-CrossModal/log/checkpoints/Jul06_04_57_54_train3_val3/checkpoints3d/model_best.ckpt" \
     --attention
     # \
     #--debug

@@ -47,3 +47,25 @@ def visualize_triplets(batch):
             plt.imshow(denormalize(pil2opencv(negatives_imgs[bsi][ni])))
             plt.title("batch {} => negatives {}".format(bsi, ni), fontsize=28)
         plt.show()
+
+def tsne_visualization(path:str, name:str, feat):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from sklearn.manifold import TSNE
+    font = {"color": "black",
+            "size": 12, 
+            "family" : "serif"}
+    #plt.style.use("dark_background")
+    tsneData = TSNE(n_components=2, random_state=33).fit_transform(feat)
+    N, C = feat.shape
+    plt.figure(figsize=(10,10))
+    plt.subplot(aspect='equal')
+    plt.scatter(tsneData[:,0], tsneData[:,1], c=range(0,N),
+            cmap=plt.cm.get_cmap('rainbow', N))
+    plt.xlim(-50,50)
+    plt.ylim(-50,50) 
+    cbar = plt.colorbar() #ticks=range(N)
+    cbar.set_label(label='color bar', fontdict=font)
+    plt.title("t-SNE visualization on " + name, fontdict=font)
+    plt.tight_layout()
+    plt.savefig(path + "/" + name + ".png")
