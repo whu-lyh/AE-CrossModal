@@ -32,7 +32,7 @@ from crossmodal.tools.datasets import input_transform
 from crossmodal.models.models_generic import get_backend, get_model
 
 # single GPU
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
 # multi GPUs
 #os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
 
@@ -118,13 +118,13 @@ if __name__ == "__main__":
                         help='Root directory of dataset')
     parser.add_argument('--id', type=str, default='vgg', required=True,
                         help='Description of this model, e.g. vgg16_netvlad')
-    parser.add_argument('--nEpochs', type=int, default=500, 
+    parser.add_argument('--nEpochs', type=int, default=50, 
                         help='number of epochs to train for')
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='manual epoch number (useful on restarts)')
     parser.add_argument('--save_every_epoch', action='store_true', 
                         help='Flag to set a separate checkpoint file for each new epoch')
-    parser.add_argument('--threads', type=int, default=0, 
+    parser.add_argument('--threads', type=int, default=16, 
                         help='Number of threads for each data loader to use')
     parser.add_argument('--nocuda', action='store_true', 
                         help='If true, use CPU only. Else use GPU.')
@@ -292,9 +292,7 @@ if __name__ == "__main__":
     # triplet loss
     # more hints at:https://pytorch.org/docs/stable/generated/torch.nn.TripletMarginLoss.html
     # A nonnegative margin representing the minimum difference between the positive and negative distances required for the loss to be 0
-    #criterion = nn.TripletMarginLoss(margin=float(config['train']['margin']) ** 0.5, p=2, reduction='sum').to(device)
-    from mycode.InfoNCE_loss import InfoNCE
-    criterion = InfoNCE()
+    criterion = nn.TripletMarginLoss(margin=float(config['train']['margin']) ** 0.5, p=2, reduction='sum').to(device)
     # datasets
     print('===> Loading dataset(s)')
     train_dataset = MSLS(opt.dataset_root_dir, mode='train', nNeg=int(config['train']['nNeg']),
@@ -340,7 +338,6 @@ if __name__ == "__main__":
             recalls = val(validation_dataset, model, model3d, 
                           encoder_dim, device, opt.threads, config, writer, epoch,
                           write_tboard=True, pbar_position=1)
-            # only recall@5 recored is stored
             is_best = recalls[5] > best_score
             if is_best:
                 not_improved = 0

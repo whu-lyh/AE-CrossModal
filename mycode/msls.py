@@ -17,9 +17,8 @@ import random
 
 # 03 is too short to find triplets
 default_cities = {
-    #'train': ["3"],
     'train': ["0", "2", "4", "5", "6", "7", "9", "10"],
-    'val': ["3"],
+    'val': ["9"],
     'test': []
 }
 
@@ -61,7 +60,7 @@ class PcFromFiles(Dataset):
 
 class MSLS(Dataset):
     def __init__(self, root_dir, cities='', nNeg=5, transform=None, mode='train', 
-                 posDistThr=15, negDistThr=30, cached_queries=600, cached_negatives=2500,
+                 posDistThr=15, negDistThr=30, cached_queries=1000, cached_negatives=2500,
                  batch_size=2, threads=8, margin=0.1):
         # initializing
         assert mode in ('train', 'val', 'test')
@@ -197,12 +196,12 @@ class MSLS(Dataset):
             print("Try more sequences")
             sys.exit()
         # cast to np.arrays for indexing during training
-        #self.qIdx = np.asarray(self.qIdx)
-        #self.pIdx = np.asarray(self.pIdx)
-        #self.nonNegIdx = np.asarray(self.nonNegIdx) # works for numpy1.19.0
-        self.qIdx = np.asarray(self.qIdx,dtype=object) # might have some wired bugs, warning is acceptable
-        self.pIdx = np.asarray(self.pIdx,dtype=object)
-        self.nonNegIdx = np.asarray(self.nonNegIdx,dtype=object)
+        self.qIdx = np.asarray(self.qIdx)
+        self.pIdx = np.asarray(self.pIdx)
+        self.nonNegIdx = np.asarray(self.nonNegIdx)
+        # self.qIdx = np.asarray(self.qIdx,dtype=object) # might have some wired bugs, warning is acceptable
+        # self.pIdx = np.asarray(self.pIdx,dtype=object)
+        # self.nonNegIdx = np.asarray(self.nonNegIdx,dtype=object)
         # here only data path is stored
         self.qImages = np.asarray(self.qImages)
         self.qPcs = np.asarray(self.qPcs)

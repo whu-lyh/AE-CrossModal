@@ -40,7 +40,7 @@ def train_epoch(train_dataset, model2d, model3d, optimizer, optimizer3d, criteri
         # train_dataset.update_subcache(net=model2d, net3d=model3d, outputdim=pool_global_feature_dim)
         # add train triplet dataset into dataloader, batch triplets will be loaded
         training_data_loader = DataLoader(dataset=train_dataset, num_workers=opt.threads,
-                                          batch_size=int(config['train']['batchsize']), shuffle=True, 
+                                          batch_size=int(config['train']['batchsize']), shuffle=True, persistent_workers=True,
                                           collate_fn=MSLS.collate_fn, pin_memory=cuda)
         # distributed
         # train_sampler = torch.utils.data.distributed.DistributedSampler(dataset=train_dataset)     

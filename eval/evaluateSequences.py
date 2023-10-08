@@ -1,15 +1,11 @@
 #!/usr/bin/env python
 import os
 import sys
-import random
-import numpy as np
 from datetime import datetime
 sys.path.append("..")
 import argparse
 import torch
 import torch.nn as nn
-
-
 from mycode.detail_val import val
 from mycode.msls import MSLS
 from mycode.NetVLAD.netvlad import get_model_netvlad
@@ -18,17 +14,18 @@ from crossmodal.models.models_generic import get_backend, get_model
 import model3d.PointNetVlad as PNV
 from sphereModel.sphereresnet import sphere_resnet18
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
 def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d, attention=True, patchnv=False, debug=False):
     # mandatory in cuda
     device = torch.device("cuda")
     config = {'network': 'spherical', 'num_clusters': 64, 'pooling': 'netvlad', 'vladv2': False}
-    config['train'] = {'cachebatchsize': 40}   
+    config['train'] = {'cachebatchsize': 40, 'batchsize': 10}
+    config['global_params'] = {'threads': 0}
     if not os.path.exists(opt.resume_path2d) or not os.path.exists(opt.resume_path3d):
         print("Dummy prediction test")
         validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), batch_size=config['train']['cachebatchsize'], threads=8, posDistThr=20)
-        recalls = val(validation_dataset, model2d=None, model3d=None, batch_size=20, threads=8, result_path=save_path, pbar_position=1)
+        recalls = val(validation_dataset, model2d=None, model3d=None, batch_size=config['train']['batchsize'], threads=config['global_params']['threads'], result_path=save_path, pbar_position=1)
         return
     # model construction  
     if network == 'spherical':
@@ -53,10 +50,8 @@ def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d,
     # load pretrained weights
     checkpoint = torch.load(resume_path2d, map_location=lambda storage, loc: storage)
     checkpoint3d = torch.load(resume_path3d, map_location=lambda storage, loc: storage)
-    print(checkpoint['recalls'])
     if debug:
         print("chepoint2d")
-        # supposed to be dict_keys(['epoch', 'state_dict', 'recalls', 'best_score', 'not_improved', 'optimizer', 'parallel'])
         print(checkpoint.keys())
         for key in checkpoint.keys():
             print(key)
@@ -75,7 +70,9 @@ def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d,
         #     print(name, '      ', param.size())  
     if torch.cuda.device_count() > 1:
         model2d = nn.DataParallel(model2d).cuda()
-    model2d.load_state_dict(checkpoint['state_dict'])
+    model2d.state_dict = checkpoint
+    print(model2d)
+    #model2d.load_state_dict(checkpoint)
     if debug:
         print("pre_model2d")
         print(model2d)
@@ -86,14 +83,14 @@ def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d,
     model2d = model2d.to(device)
     model3d = model3d.to(device)
     # for evaluation, batch size could be 80 at 24GB GPU
-    validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), batch_size=config['train']['cachebatchsize'], threads=8, posDistThr=20)
-    val(validation_dataset, model2d, model3d, batch_size=2, threads=0, result_path=save_path, faiss_gpu=False, save_fig=False, pbar_position=1, debug=debug)
+    # the batch_size, thread and other settings are designed for hardest sampling mining
+    validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), 
+                              batch_size=config['train']['cachebatchsize'], posDistThr=20)
+    val(validation_dataset, model2d, model3d, batch_size=config['train']['batchsize'], threads=config['global_params']['threads'], 
+        result_path=save_path, faiss_gpu=True, save_fig=False, pbar_position=1, debug=debug)
         
 
 if __name__ == "__main__":
-    '''
-        Only single sequence test is supported
-    '''
     parser = argparse.ArgumentParser(description='CrossModal-evaluation-sequence')
     parser.add_argument('--dataset_root_dir', type=str, default='/data-lyh/KITTI360', required=True, 
                         help='Root directory of dataset')
@@ -125,10 +122,6 @@ if __name__ == "__main__":
     debug = False
     if opt.debug:
         debug = True
-    # random seed
-    random.seed(3407)
-    np.random.seed(3407)
-    torch.manual_seed(3407)
     evaluate(network=opt.network, dataset_root_dir=opt.dataset_root_dir, save_path=opt.save_path, 
              resume_path2d=opt.resume_path2d, resume_path3d=opt.resume_path3d, 
              attention=attention, patchnv=patchnv, debug=debug)

@@ -26,19 +26,19 @@ def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, wr
     # dataloader
     test_data_loader_queries = DataLoader(dataset=eval_dataset_queries,
                                             num_workers=threads, 
-                                            batch_size=int(config['train']['cachebatchsize']),
+                                            batch_size=int(config['train']['cachebatchsize']), persistent_workers=True,
                                             shuffle=False, pin_memory=cuda)
     test_data_loader_dbs = DataLoader(dataset=eval_dataset_dbs,
                                         num_workers=threads, 
-                                        batch_size=int(config['train']['cachebatchsize']),
+                                        batch_size=int(config['train']['cachebatchsize']), persistent_workers=True,
                                         shuffle=False, pin_memory=cuda)
     test_data_loader_queries_pc = DataLoader(dataset=eval_dataset_queries_pc,
                                                 num_workers=threads, 
-                                                batch_size=int(config['train']['cachebatchsize']),
+                                                batch_size=int(config['train']['cachebatchsize']), persistent_workers=True, 
                                                 shuffle=False, pin_memory=cuda)
     test_data_loader_dbs_pc = DataLoader(dataset=eval_dataset_dbs_pc,
                                             num_workers=threads, 
-                                            batch_size=int(config['train']['cachebatchsize']),
+                                            batch_size=int(config['train']['cachebatchsize']), persistent_workers=True,
                                             shuffle=False, pin_memory=cuda)
     # model freeze BN and dropout while validation
     model2d.eval()
@@ -76,7 +76,9 @@ def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, wr
     # release memory
     del test_data_loader_queries, test_data_loader_dbs, test_data_loader_queries_pc, test_data_loader_dbs_pc
     # build index
-    tqdm.write('====> Building faiss index for database')
+    tqdm.write('====> Building faiss index for pc database')
+    faiss_index = faiss.IndexFlatL2(global_feature_dim)
+    faiss_index.add(dbFeat_pc)
     tqdm.write('====> Calculating recall @ N')
     n_values = [1, 5, 10, 20, 50]
     # for each query get those within threshold distance
