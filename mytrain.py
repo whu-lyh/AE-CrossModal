@@ -21,7 +21,7 @@ from tqdm import trange
 
 from mycode.NetVLAD.netvlad import get_model_netvlad
 import model3d.PointNetVlad as PNV
-from sphereModel.sphereresnet import sphere_resnet18
+from sphereModel.sphereresnet import sphere_resnet18, sphere_resnet34
 from mycode.msls import MSLS
 
 from mycode.train_epoch import train_epoch
@@ -32,7 +32,7 @@ from crossmodal.tools.datasets import input_transform
 from crossmodal.models.models_generic import get_backend, get_model
 
 # single GPU
-os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 # multi GPUs
 #os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
 
@@ -277,6 +277,8 @@ if __name__ == "__main__":
         model3d = PNV.PointNetVlad(global_feat=True, feature_transform=True, max_pool=False, output_dim=256, num_points=4096)
     print('model3d:\t',model3d)
     model3d = model3d.to(device)
+    if int(config['global_params']['nGPU']) > 1 and torch.cuda.device_count() > 1:
+        model3d = nn.DataParallel(model3d)
     # 3D learning rate
     learning_rate = get_learning_rate(opt.start_epoch)
     print('3dLR:\t', learning_rate)

@@ -20,16 +20,16 @@
 
 # without h5 cache
 # due to the performance of the original model is the best, no additional model_best is saved
-python mytrain.py --thread 7 \
+python mytrain.py --thread 8 \
      --network spherical \
      --attention \
-     --id spherical_new_from_scratch \
+     --id spherical_new_from_scratch_all_seq \
      --start_epoch 0 \
      --pretrained_cnn_network \
-     --cache_path /root/lyh/data_lyh/kitti360/cache \
-     --dataset_root_dir /root/lyh/data_lyh/kitti360 \
-     --save_path /root/lyh/code/AE-CrossModal/log/checkpoints \
-     --cluster_path /root/lyh/data_lyh/kitti360/cache/centroids/spherical_20m_KITTI360_64_desc_cen.hdf5
+     --cache_path /lyh/KITTI360/cache \
+     --dataset_root_dir /lyh/KITTI360 \
+     --save_path /workspace/AE-CrossModal/log/checkpoints
+    # --cluster_path /lyh/KITTI360/cache/centroids/spherical_20m_KITTI360_64_desc_cen.hdf5
 
 # python mytrain.py --thread 8 \
 #         --network spherical \

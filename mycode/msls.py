@@ -17,8 +17,10 @@ import random
 
 # 03 is too short to find triplets
 default_cities = {
-    'train': ["0", "2", "4", "5", "6", "7", "9", "10"],
-    'val': ["9"],
+     'train': ["0", "2", "4", "5", "6", "7", "9", "10"],
+    #'train': ["0"],
+    # 'val': ["9"],
+    'val': ["0"],
     'test': []
 }
 
@@ -100,7 +102,7 @@ class MSLS(Dataset):
         for city_idx in self.cities:
             city='2013_05_28_drive_%04d_sync' % int(city_idx)
             print("=====> {}".format(city))
-            subdir_img = 'data_2d_pano'
+            subdir_img = 'data_2d_pano_512_1024'
             subdir_submap = 'data_3d_submap'
             # get len of images from cities so far for global indexing
             _lenQ = len(self.qImages)
@@ -109,9 +111,9 @@ class MSLS(Dataset):
             if self.mode in ['train', 'val']:
                 # load query and database data
                 if self.mode == 'val':
-                    qData = pd.read_csv(join(root_dir, subdir_img, city, 'query.csv'), index_col=0)
+                    qData = pd.read_csv(join(root_dir, subdir_img, city, 'query_val.csv'), index_col=0)
                     # load database data
-                    dbData = pd.read_csv(join(root_dir, subdir_img, city, 'database.csv'), index_col=0)
+                    dbData = pd.read_csv(join(root_dir, subdir_img, city, 'database_val.csv'), index_col=0)
                 else:
                     qData = pd.read_csv(join(root_dir, subdir_img, city, 'query.csv'), index_col=0)
                     # load database data
@@ -197,11 +199,11 @@ class MSLS(Dataset):
             sys.exit()
         # cast to np.arrays for indexing during training
         self.qIdx = np.asarray(self.qIdx)
-        self.pIdx = np.asarray(self.pIdx)
-        self.nonNegIdx = np.asarray(self.nonNegIdx)
+        # self.pIdx = np.asarray(self.pIdx)
+        # self.nonNegIdx = np.asarray(self.nonNegIdx)
         # self.qIdx = np.asarray(self.qIdx,dtype=object) # might have some wired bugs, warning is acceptable
-        # self.pIdx = np.asarray(self.pIdx,dtype=object)
-        # self.nonNegIdx = np.asarray(self.nonNegIdx,dtype=object)
+        self.pIdx = np.asarray(self.pIdx,dtype=object)
+        self.nonNegIdx = np.asarray(self.nonNegIdx,dtype=object)
         # here only data path is stored
         self.qImages = np.asarray(self.qImages)
         self.qPcs = np.asarray(self.qPcs)
