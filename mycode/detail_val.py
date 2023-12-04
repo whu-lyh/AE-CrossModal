@@ -98,7 +98,7 @@ def compute_recall(gt, predictions, numQ, k_values, task_name=''):
     return recall_at_k
 
 
-def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_gpu=True, save_fig=True, pbar_position=0, debug=True):
+def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, device, faiss_gpu=True, save_fig=True, pbar_position=0, debug=True):
     '''
         Validation function offline, more close to test on single sequence
     '''
@@ -142,7 +142,7 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
         gt_dist_dic = dict(zip(gt_index, gt_dist_lists))
         with open(os.path.join(result_path, "ground_truth_dists.json"), 'w', encoding='utf-8') as file:
             file.write(json.dumps(gt_dist_dic, indent=4))
-    k_values = [1, 5, 10, 20, 50]
+    k_values = [1, 5, 10, 20, 25]
     des = ['2dto2d', '2dto3d', '3dto2d', '3dto3d']
     # top1_percent = int(len(eval_set_queries)) * 0.01 + 1
     # k_values.append(top1_percent)
@@ -165,16 +165,16 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
             global_feature_dim = 256
             # image feature initialize
             qFeat = np.empty((eval_set_query_num, global_feature_dim), dtype=np.float32)
-            qFeat_FeatureMap = np.empty((eval_set_query_num, 512, 32, 64), dtype=np.float32)
+            # qFeat_FeatureMap = np.empty((eval_set_query_num, 512, 32, 64), dtype=np.float32)
             dbFeat = np.empty((len(eval_set_dbs), global_feature_dim), dtype=np.float32)
-            dbFeat_FeatureMap = np.empty((len(eval_set_dbs), 512, 32, 64), dtype=np.float32)
+            # dbFeat_FeatureMap = np.empty((len(eval_set_dbs), 512, 32, 64), dtype=np.float32)
             # pc feature initialize
             qFeat_pc = np.empty((len(eval_set_queries_pc), global_feature_dim), dtype=np.float32)
-            qFeat_pc_FeatureMap = np.empty((len(eval_set_queries_pc), 1024, 4096, 1), dtype=np.float32)
+            # qFeat_pc_FeatureMap = np.empty((len(eval_set_queries_pc), 1024, 4096, 1), dtype=np.float32)
             dbFeat_pc = np.empty((len(eval_set_dbs_pc), global_feature_dim), dtype=np.float32)
-            dbFeat_pc_FeatureMap = np.empty((len(eval_set_dbs_pc), 1024, 4096, 1), dtype=np.float32)
+            # dbFeat_pc_FeatureMap = np.empty((len(eval_set_dbs_pc), 1024, 4096, 1), dtype=np.float32)
             # each for loop corresponding to a batch data
-            for feat, feat_fm, test_data_loader in zip([qFeat, dbFeat], [qFeat_FeatureMap, dbFeat_FeatureMap], [test_data_loader_queries, test_data_loader_dbs]):
+            for feat, test_data_loader in zip([qFeat, dbFeat], [test_data_loader_queries, test_data_loader_dbs]):
                 for iteration, (input_data, indices) in \
                         enumerate(tqdm(test_data_loader, position=pbar_position, leave=False, desc='Evaluate Images Iter'.rjust(15)), 1):
                     # print('input_data')
@@ -183,14 +183,14 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
                     # print(input_data.shape) # torch.Size([10, 3, 512, 1024])
                     # print('indices')
                     # print(indices)
-                    input_data = input_data.to("cuda")
+                    input_data = input_data.to(device)
                     image_encoding = model2d.encoder(input_data)
                     vlad_encoding= model2d.pool(image_encoding)
                     # all image query and database will be calculated in a batch parallel manner
                     feat[indices.detach().numpy(), :] = vlad_encoding.detach().cpu().numpy()
                     # release memory
                     del input_data, image_encoding, vlad_encoding
-            for feat, feat_fm, test_data_loader in zip([qFeat_pc, dbFeat_pc], [qFeat_pc_FeatureMap, dbFeat_pc_FeatureMap], [test_data_loader_queries_pc, test_data_loader_dbs_pc]):
+            for feat, test_data_loader in zip([qFeat_pc, dbFeat_pc], [test_data_loader_queries_pc, test_data_loader_dbs_pc]):
                 for iteration, (input_data, indices) in \
                         enumerate(tqdm(test_data_loader, position=pbar_position, leave=False, desc='Evaluate Pcs Iter'.rjust(15)), 1):
                     # print('input_data3d')
@@ -201,7 +201,7 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
                     # print(indices)
                     input_data = input_data.float()
                     input_data = input_data.view((-1, 1, 4096, 3))
-                    input_data = input_data.to("cuda")
+                    input_data = input_data.to(device)
                     # pc_enc = model3d.point_net(input_data)
                     # vlad_encoding = model3d.net_vlad(pc_enc)
                     vlad_encoding = model3d(input_data)
@@ -239,8 +239,8 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
                     faiss_index = faiss.IndexFlatL2(global_feature_dim)
                 # add the current sequence database data into faiss
                 faiss_index.add(dbTest[dbEndPosTot:dbEndPosTot+dbEndPos, :])
-                tsne_visualization(result_path, des[i] + "_query", qTest[qEndPosTot:qEndPosTot+qEndPos, :])
-                tsne_visualization(result_path, des[i] + "_database", dbTest[dbEndPosTot:dbEndPosTot+dbEndPos, :])
+                # tsne_visualization(result_path, des[i] + "_query", qTest[qEndPosTot:qEndPosTot+qEndPos, :])
+                # tsne_visualization(result_path, des[i] + "_database", dbTest[dbEndPosTot:dbEndPosTot+dbEndPos, :])
                 # search for each query data, could be done in a batch and return multi searching results by k_values(number check)
                 # faiss will return indices and distances
                 dis, preds = faiss_index.search(qTest[qEndPosTot:qEndPosTot+qEndPos, :], max(k_values) + 1) # add +1
@@ -254,10 +254,10 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
                 dbEndPosTot += dbEndPos
     # fetch prediction results
     predictions = {}
-    predictions[0] = [list(pre[:50]) for pre in predictions_tmp[0]] # 2d->2d
-    predictions[1] = [list(pre[:50]) for pre in predictions_tmp[1]] # 2d->3d
-    predictions[2] = [list(pre[:50]) for pre in predictions_tmp[2]] # 3d->2d
-    predictions[3] = [list(pre[:50]) for pre in predictions_tmp[3]] # 3d->3d
+    predictions[0] = [list(pre[:25]) for pre in predictions_tmp[0]] # 2d->2d
+    predictions[1] = [list(pre[:25]) for pre in predictions_tmp[1]] # 2d->3d
+    predictions[2] = [list(pre[:25]) for pre in predictions_tmp[2]] # 3d->2d
+    predictions[3] = [list(pre[:25]) for pre in predictions_tmp[3]] # 3d->3d
     # predictions[0] = gt # 2d->2d
     # predictions[1] = gt # 2d->3d
     # predictions[2] = gt # 3d->2d
@@ -296,79 +296,80 @@ def val(eval_set, model2d, model3d, threads, batch_size:int, result_path, faiss_
         with open(path, 'w', encoding='utf-8') as file:
             file.write(json.dumps(pre_dic, indent=4))
     # save all specific results
-    if save_fig:
-        # randomly select 10 query samples
-        save_num = 10
-        save_ind = np.random.choice(eval_set_query_num, save_num, replace=False)
-        # indx_p = 0
-        for indx_p, task_name in enumerate(des):
-            task_path = os.path.join(result_path, task_name)
-            if not os.path.exists(task_path):
-                os.mkdir(task_path)
-            # save results for each query data respectively
-            for ind in save_ind:
-                # here the id is the csv id, not the image id
-                save_dir = os.path.join(task_path, str(ind))
-                if not os.path.exists(save_dir):
-                    os.mkdir(save_dir)
-                # copy query data(image and pc) to desired path
-                save_q = os.path.join(save_dir, "query")
-                if not os.path.exists(save_q):
-                    os.mkdir(save_q)
-                query_img = q_ind_imgs_path[ind]
-                shutil.copy(query_img, save_q)
-                query_pc = q_ind_pcs_path[ind]
-                shutil.copy(query_pc, save_q)
-                # save recalls
-                save_recalls = os.path.join(save_dir, "recalls")
-                if not os.path.exists(save_recalls):
-                    os.mkdir(save_recalls)
-                predict_imgs = pics_path[indx_p][ind][:5]
-                #print("predict_imgs", predict_imgs)
-                # for database data only file name is saved, no matter imgs or pcs
-                predict_pcs = p_fnames[indx_p][ind][:5]
-                if indx_p == 0 or indx_p == 2:
-                    for i, pos in enumerate(predict_imgs):
-                        shutil.copy(pos, os.path.join(save_recalls, os.path.basename(pos)))
-                else:
-                    for i, pos in enumerate(predict_pcs):
-                        # here database data should and could not be zero
-                        db_pc = os.path.join(os.path.dirname(eval_set.dbPcs[0]), pos)
-                        shutil.copy(db_pc, os.path.join(save_recalls, pos))
-                pos_index_indbs = predictions[indx_p][ind][:10]
-                #print("pos_index_in_dbs:\t", pos_index_indbs)
-                # save feature maps
-                if not no_feature:
-                    # feature map of query data
-                    if indx_p == 0 or indx_p == 1:
-                        enc = torch.from_numpy(qFeat_FeatureMap[ind])
-                        vlad = torch.from_numpy(qFeat[ind])
-                        save_img(enc.unsqueeze(0), save_q + '/encoding')
-                        save_img(vlad.view(16, 16).unsqueeze(0).unsqueeze(0), save_q + '/vlad')
-                    else:
-                        enc = torch.from_numpy(qFeat_pc_FeatureMap[ind])
-                        vlad = torch.from_numpy(qFeat_pc[ind])
-                        save_img(enc.unsqueeze(0).view(1, 1024, 64, 64), save_q + '/encoding')
-                        save_img(vlad.view(16, 16).unsqueeze(0).unsqueeze(0), save_q + '/vlad')
-                    save_dir_fm = os.path.join(save_dir, "featureMaps")
-                    if not os.path.exists(save_dir_fm):
-                        os.mkdir(save_dir_fm)
-                    if indx_p == 0 or indx_p == 2:
-                        for i, ind_db in enumerate(pos_index_indbs):
-                            enc_db = torch.from_numpy(dbFeat_FeatureMap[ind_db])
-                            vlad_db = torch.from_numpy(dbFeat[ind_db])
-                            save_enc_path = os.path.join(save_dir_fm, 'enc' + str(i))
-                            save_vlad_path = os.path.join(save_dir_fm, 'vlad' + str(i))
-                            save_img(enc_db.unsqueeze(0), save_enc_path)
-                            save_img(vlad_db.view(16, 16).unsqueeze(0).unsqueeze(0), save_vlad_path)
-                    else:
-                        for i, ind_db in enumerate(pos_index_indbs):
-                            enc_db = torch.from_numpy(dbFeat_pc_FeatureMap[ind_db])
-                            vlad_db = torch.from_numpy(dbFeat_pc[ind_db])
-                            save_enc_path = os.path.join(save_dir_fm, 'enc' + str(i))
-                            save_vlad_path = os.path.join(save_dir_fm, 'vlad' + str(i))
-                            save_img(enc_db.unsqueeze(0).view(1, 1024, 64, 64), save_enc_path)
-                            save_img(vlad_db.view(16, 16).unsqueeze(0).unsqueeze(0), save_vlad_path)
+    # if save_fig:
+    #     # randomly select 10 query samples
+    #     save_num = 10
+    #     save_ind = np.random.choice(eval_set_query_num, save_num, replace=False)
+    #     # indx_p = 0
+    #     for indx_p, task_name in enumerate(des):
+    #         task_path = os.path.join(result_path, task_name)
+    #         if not os.path.exists(task_path):
+    #             os.mkdir(task_path)
+    #         # save results for each query data respectively
+    #         for ind in save_ind:
+    #             # here the id is the csv id, not the image id
+    #             save_dir = os.path.join(task_path, str(ind))
+    #             if not os.path.exists(save_dir):
+    #                 os.mkdir(save_dir)
+    #             # copy query data(image and pc) to desired path
+    #             save_q = os.path.join(save_dir, "query")
+    #             if not os.path.exists(save_q):
+    #                 os.mkdir(save_q)
+    #             query_img = q_ind_imgs_path[ind]
+    #             shutil.copy(query_img, save_q)
+    #             query_pc = q_ind_pcs_path[ind]
+    #             shutil.copy(query_pc, save_q)
+    #             # save recalls
+    #             save_recalls = os.path.join(save_dir, "recalls")
+    #             if not os.path.exists(save_recalls):
+    #                 os.mkdir(save_recalls)
+    #             predict_imgs = pics_path[indx_p][ind][:5]
+    #             #print("predict_imgs", predict_imgs)
+    #             # for database data only file name is saved, no matter imgs or pcs
+    #             predict_pcs = p_fnames[indx_p][ind][:5]
+    #             if indx_p == 0 or indx_p == 2:
+    #                 for i, pos in enumerate(predict_imgs):
+    #                     shutil.copy(pos, os.path.join(save_recalls, os.path.basename(pos)))
+    #             else:
+    #                 for i, pos in enumerate(predict_pcs):
+    #                     # here database data should and could not be zero
+    #                     db_pc = os.path.join(os.path.dirname(eval_set.dbPcs[0]), pos)
+    #                     shutil.copy(db_pc, os.path.join(save_recalls, pos))
+    #             pos_index_indbs = predictions[indx_p][ind][:10]
+    #             #print("pos_index_in_dbs:\t", pos_index_indbs)
+    #             # save feature maps
+    #             if not no_feature:
+    #                 # feature map of query data
+    #                 if indx_p == 0 or indx_p == 1:
+    #                     enc = torch.from_numpy(qFeat_FeatureMap[ind])
+    #                     vlad = torch.from_numpy(qFeat[ind])
+    #                     save_img(enc.unsqueeze(0), save_q + '/encoding')
+    #                     save_img(vlad.view(16, 16).unsqueeze(0).unsqueeze(0), save_q + '/vlad')
+    #                 else:
+    #                     enc = torch.from_numpy(qFeat_pc_FeatureMap[ind])
+    #                     vlad = torch.from_numpy(qFeat_pc[ind])
+    #                     save_img(enc.unsqueeze(0).view(1, 1024, 64, 64), save_q + '/encoding')
+    #                     save_img(vlad.view(16, 16).unsqueeze(0).unsqueeze(0), save_q + '/vlad')
+    #                 save_dir_fm = os.path.join(save_dir, "featureMaps")
+    #                 if not os.path.exists(save_dir_fm):
+    #                     os.mkdir(save_dir_fm)
+    #                 if indx_p == 0 or indx_p == 2:
+    #                     for i, ind_db in enumerate(pos_index_indbs):
+    #                         enc_db = torch.from_numpy(dbFeat_FeatureMap[ind_db])
+    #                         vlad_db = torch.from_numpy(dbFeat[ind_db])
+    #                         save_enc_path = os.path.join(save_dir_fm, 'enc' + str(i))
+    #                         save_vlad_path = os.path.join(save_dir_fm, 'vlad' + str(i))
+    #                         save_img(enc_db.unsqueeze(0), save_enc_path)
+    #                         save_img(vlad_db.view(16, 16).unsqueeze(0).unsqueeze(0), save_vlad_path)
+    #                 else:
+    #                     for i, ind_db in enumerate(pos_index_indbs):
+    #                         enc_db = torch.from_numpy(dbFeat_pc_FeatureMap[ind_db])
+    #                         vlad_db = torch.from_numpy(dbFeat_pc[ind_db])
+    #                         save_enc_path = os.path.join(save_dir_fm, 'enc' + str(i))
+    #                         save_vlad_path = os.path.join(save_dir_fm, 'vlad' + str(i))
+    #                         save_img(enc_db.unsqueeze(0).view(1, 1024, 64, 64), save_enc_path)
+    #                         save_img(vlad_db.view(16, 16).unsqueeze(0).unsqueeze(0), save_vlad_path)
+    
     # save recalls and directly save pr curves
     for task_index, task in enumerate(des):
         recall_at_k = compute_recall(gt=gt, predictions=predictions[task_index], 

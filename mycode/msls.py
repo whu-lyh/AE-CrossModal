@@ -17,10 +17,11 @@ import random
 
 # 03 is too short to find triplets
 default_cities = {
-     'train': ["0", "2", "4", "5", "6", "7", "9", "10"],
-    #'train': ["0"],
-    # 'val': ["9"],
+    # 'train': ["0", "3", "2", "4", "5", "6", "7", "9", "10"],
+    'train': ["0", "2", "4", "5", "6"],
     'val': ["0"],
+    # 'train': ["3"],
+    # 'val': ["3"],
     'test': []
 }
 
@@ -96,6 +97,7 @@ class MSLS(Dataset):
         # flags
         self.cache = None
         self.mode = mode
+        self.mining = False
         # other
         self.transform = transform
         # load data
@@ -199,11 +201,11 @@ class MSLS(Dataset):
             sys.exit()
         # cast to np.arrays for indexing during training
         self.qIdx = np.asarray(self.qIdx)
-        # self.pIdx = np.asarray(self.pIdx)
-        # self.nonNegIdx = np.asarray(self.nonNegIdx)
+        self.pIdx = np.asarray(self.pIdx)
+        self.nonNegIdx = np.asarray(self.nonNegIdx)
         # self.qIdx = np.asarray(self.qIdx,dtype=object) # might have some wired bugs, warning is acceptable
-        self.pIdx = np.asarray(self.pIdx,dtype=object)
-        self.nonNegIdx = np.asarray(self.nonNegIdx,dtype=object)
+        # self.pIdx = np.asarray(self.pIdx,dtype=object)
+        # self.nonNegIdx = np.asarray(self.nonNegIdx,dtype=object)
         # here only data path is stored
         self.qImages = np.asarray(self.qImages)
         self.qPcs = np.asarray(self.qPcs)
@@ -238,6 +240,37 @@ class MSLS(Dataset):
 
     def __len__(self):
         return len(self.triplets)
+
+    def generate_triplets(self):
+        '''
+            Purpose: get self.triplets fufilled from whole datasets, 
+            Specifically, get the query idxs, the query data is randomly selected each epoch, get its postive and negatives
+        '''
+        # reset triplets
+        self.triplets = []
+        # get all query indices
+        query_idxs = list(range(len(self.qIdx)))
+        qidxs = np.array(query_idxs)
+        # build triplets based on randomly selection from data
+        for q in qidxs:
+            # get query idx
+            qidx = self.qIdx[q]
+            # get positives
+            pidxs = self.pIdx[q]
+            # choose a random positive (within positive range default self.posDistThr m, fetch 1 positives)
+            pidx = np.random.choice(pidxs, size=1)[0]
+            # get negatives, 5 by default
+            while True:
+                # randomly select negatives from whole sequences in training dataset
+                nidxs = np.random.choice(len(self.dbImages), size=self.nNeg)
+                # ensure that non of the choice negative images are within the negative range (default 25 m)
+                # while-loop check until non nidx existed in self.nonNegIdx[q], due to the nonNegIdx is the samples inside negative range
+                if sum(np.in1d(nidxs, self.nonNegIdx[q])) == 0:
+                    break
+            # package the triplet and target, all the indices are the indicex of csv file
+            triplet = [qidx, pidx, *nidxs]
+            target = [-1, 1] + [0] * len(nidxs)
+            self.triplets.append((triplet, target))
 
     def new_epoch(self):
         '''

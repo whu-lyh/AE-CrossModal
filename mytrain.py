@@ -3,96 +3,39 @@ from __future__ import print_function
 
 import argparse
 import configparser
+import math
 import os
 import random
 import shutil
-import math
-from os.path import join, isfile
-from os import makedirs
 from datetime import datetime
+from os import makedirs
+from os.path import isfile, join
+
+import h5py
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import LambdaLR
-import h5py
 from torch.utils.tensorboard import SummaryWriter
-import numpy as np
 from tqdm import trange
 
-from mycode.NetVLAD.netvlad import get_model_netvlad
 import model3d.PointNetVlad as PNV
-from sphereModel.sphereresnet import sphere_resnet18, sphere_resnet34
-from mycode.msls import MSLS
-
-from mycode.train_epoch import train_epoch
-from mycode.val import val
+from crossmodal.models.models_generic import get_backend, get_model
+from crossmodal.tools.datasets import input_transform
 from crossmodal.training_tools.get_clusters import get_clusters
 from crossmodal.training_tools.tools import save_checkpoint
-from crossmodal.tools.datasets import input_transform
-from crossmodal.models.models_generic import get_backend, get_model
+from mycode.msls import MSLS
+from mycode.NetVLAD.netvlad import get_model_netvlad
+from mycode.train_epoch import train_epoch, train_epoch_no_mining
+from mycode.val import val
+from sphereModel.sphereresnet import (sphere_resnet18, sphere_resnet34,
+                                      sphere_resnet50)
 
 # single GPU
-os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+# os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 # multi GPUs
-#os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
-
-class ConstantLRSchedule(LambdaLR):
-    """ Constant learning rate schedule.
-    """
-    def __init__(self, optimizer, last_epoch=-1):
-        super(ConstantLRSchedule, self).__init__(optimizer, lambda _: 1.0, last_epoch=last_epoch)
-
-
-class WarmupConstantSchedule(LambdaLR):
-    """ Linear warmup and then constant.
-        Linearly increases learning rate schedule from 0 to 1 over `warmup_steps` training steps.
-        Keeps learning rate schedule equal to 1. after warmup_steps.
-    """
-    def __init__(self, optimizer, warmup_steps, last_epoch=-1):
-        self.warmup_steps = warmup_steps
-        super(WarmupConstantSchedule, self).__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
-
-    def lr_lambda(self, step):
-        if step < self.warmup_steps:
-            return float(step) / float(max(1.0, self.warmup_steps))
-        return 1.
-
-
-class WarmupLinearSchedule(LambdaLR):
-    """ Linear warmup and then linear decay.
-        Linearly increases learning rate from 0 to 1 over `warmup_steps` training steps.
-        Linearly decreases learning rate from 1. to 0. over remaining `t_total - warmup_steps` steps.
-    """
-    def __init__(self, optimizer, warmup_steps, t_total, last_epoch=-1):
-        self.warmup_steps = warmup_steps
-        self.t_total = t_total
-        super(WarmupLinearSchedule, self).__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
-
-    def lr_lambda(self, step):
-        if step < self.warmup_steps:
-            return float(step) / float(max(1, self.warmup_steps))
-        return max(0.0, float(self.t_total - step) / float(max(1.0, self.t_total - self.warmup_steps)))
-
-
-class WarmupCosineSchedule(LambdaLR):
-    """ Linear warmup and then cosine decay.
-        Linearly increases learning rate from 0 to 1 over `warmup_steps` training steps.
-        Decreases learning rate from 1. to 0. over remaining `t_total - warmup_steps` steps following a cosine curve.
-        If `cycles` (default=0.5) is different from default, learning rate follows cosine function after warmup.
-    """
-    def __init__(self, optimizer, warmup_steps, t_total, cycles=.5, last_epoch=-1, min_lr=1e-6):
-        self.warmup_steps = warmup_steps
-        self.t_total = t_total
-        self.cycles = cycles
-        self.min_lr = min_lr
-        super(WarmupCosineSchedule, self).__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
-
-    def lr_lambda(self, step):
-        if step < self.warmup_steps:
-            return float(step) / float(max(1.0, self.warmup_steps))
-        # progress after warmup
-        progress = float(step - self.warmup_steps) / float(max(1, self.t_total - self.warmup_steps))
-        return max(self.min_lr, 0.5 * (1. + math.cos(math.pi * float(self.cycles) * 2.0 * progress)))
+os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
 
 def get_learning_rate(epoch):
     
@@ -132,21 +75,10 @@ if __name__ == "__main__":
                         help='If true, add SE attention to backbone.')
     parser.add_argument('--network', type=str, default='resnet', 
                         help='2D CNN network, e.g. vgg,resnet,spherical')
-    parser.add_argument('--pretrained_cnn_network', action='store_true', required=True,
+    parser.add_argument('--pretrained_cnn_network', type=bool, default=False,
                         help='whether use pretrained 2D CNN network')
-    # multi GPUs setting
-    #parser.add_argument("--local_rank", type=int)
-    # parser.add_argument('--workers', default=32, type=int, metavar='N',
-    #                     help='number of data loading workers (default: 32)')
-    # parser.add_argument('--world_size', default=-1, type=int,
-    #                     help='number of nodes for distributed training')
-    # parser.add_argument('--rank', default=-1, type=int,
-    #                     help='node rank for distributed training')
-    # parser.add_argument('--multiprocessing-distributed', action='store_true',
-    #                     help='Use multi-processing distributed training to launch '
-    #                      'N processes per node, which has N GPUs. This is the '
-    #                      'fastest way to use PyTorch for either single node or '
-    #                      'multi node data parallel training')
+    parser.add_argument('--debug', action='store_true', 
+                        help='whether debug mode.')
     
     opt = parser.parse_args()
     print(opt)
@@ -155,16 +87,12 @@ if __name__ == "__main__":
     assert os.path.isfile(configfile)
     config = configparser.ConfigParser()
     config.read(configfile)
-
-    # multi GPUs setting
     print('os.environ[CUDA_VISIBLE_DEVICES]:\t',os.environ['CUDA_VISIBLE_DEVICES'])
-    #torch.cuda.set_device(opt.local_rank) 
-    #torch.distributed.init_process_group(backend='nccl')
-    # device_ids = [0, 1, 2, 3]
     cuda = not opt.nocuda
     if cuda and not torch.cuda.is_available():
         raise Exception("No GPU found, please run with --nocuda")
     device = torch.device("cuda" if cuda else "cpu")
+    print(device)
     # random seed
     random.seed(int(config['train']['seed']))
     np.random.seed(int(config['train']['seed']))
@@ -183,7 +111,7 @@ if __name__ == "__main__":
     print('whether use pretrained 2D CNN network:\t', opt.pretrained_cnn_network)
     # basic backbone
     if opt.network == 'spherical':
-        encoder = sphere_resnet18(pretrained=pre)
+        encoder = sphere_resnet34(pretrained=pre)
         encoder_dim = 512
     elif opt.network == 'resnet':
         encoder_dim, encoder = get_backend(net='resnet', pre=pre)
@@ -226,7 +154,7 @@ if __name__ == "__main__":
             print('===> Finding cluster centroids')
             print('===> Loading dataset(s) for clustering')
             train_dataset = MSLS(opt.dataset_root_dir, mode='train', transform=input_transform(train=False),
-                                 batch_size=int(config['train']['batchsize']), threads=opt.threads, margin=float(config['train']['margin']))
+                                 batch_size=int(config['train']['cachebatchsize']), threads=opt.threads, margin=float(config['train']['margin']))
             print(train_dataset)
             model = model.to(device)
             print('===> Calculating descriptors and clusters')
@@ -243,8 +171,8 @@ if __name__ == "__main__":
     isParallel = False
     if int(config['global_params']['nGPU']) > 1 and torch.cuda.device_count() > 1:
         model.encoder = nn.DataParallel(model.encoder)
+        model.attention = nn.DataParallel(model.attention)
         model.pool = nn.DataParallel(model.pool)
-        # model3d = nn.DataParallel(model3d)
         isParallel = True
     # lr
     optimizer2d = None
@@ -255,15 +183,10 @@ if __name__ == "__main__":
         optimizer2d = optim.SGD(filter(lambda par: par.requires_grad, model.parameters()), lr=float(config['train']['lr']),
                               momentum=float(config['train']['momentum']), weight_decay=float(config['train']['weightDecay']))
         scheduler = optim.lr_scheduler.StepLR(optimizer2d, step_size=int(config['train']['lrstep']), gamma=float(config['train']['lrgamma']))
-    elif config['train']['optim'] == 'Warmup':
-        optimizer2d = optim.SGD(filter(lambda par: par.requires_grad, model.parameters()), lr=float(config['train']['lr']),
-                              momentum=float(config['train']['momentum']), weight_decay=float(config['train']['weightDecay']))
-        scheduler = WarmupLinearSchedule(optimizer2d, warmup_steps=0.03, t_total=opt.nEpochs)
     else:
         raise ValueError('Unknown optimizer2d: ' + config['train']['optim'])
 
     model = model.to(device)
-    print('model2d:\t', model)
     if opt.resume_path2d:
         optimizer2d.load_state_dict(checkpoint['optimizer'])
     # 3D encoder
@@ -275,7 +198,7 @@ if __name__ == "__main__":
     else:
         # vanilla PointNetVLAD
         model3d = PNV.PointNetVlad(global_feat=True, feature_transform=True, max_pool=False, output_dim=256, num_points=4096)
-    print('model3d:\t',model3d)
+    # print('model3d:\t', model3d)
     model3d = model3d.to(device)
     if int(config['global_params']['nGPU']) > 1 and torch.cuda.device_count() > 1:
         model3d = nn.DataParallel(model3d)
@@ -299,10 +222,15 @@ if __name__ == "__main__":
     print('===> Loading dataset(s)')
     train_dataset = MSLS(opt.dataset_root_dir, mode='train', nNeg=int(config['train']['nNeg']),
                          transform=input_transform(train=True),
-                         batch_size=int(config['train']['cachebatchsize']), threads=opt.threads,
+                         batch_size=int(config['train']['batchsize']), threads=opt.threads,
                          margin=float(config['train']['margin']))
+    if not train_dataset.mining:
+        train_dataset.generate_triplets()
+        training_data_loader = torch.utils.data.DataLoader(dataset=train_dataset, num_workers=opt.threads,
+                                        batch_size=int(config['train']['batchsize']), shuffle=True, persistent_workers=True,
+                                        collate_fn=MSLS.collate_fn, pin_memory=True)
     validation_dataset = MSLS(opt.dataset_root_dir, mode='val', transform=input_transform(train=False),
-                              batch_size=int(config['train']['cachebatchsize']), threads=opt.threads,
+                              batch_size=int(config['train']['batchsize']), threads=opt.threads,
                               margin=float(config['train']['margin']))
     print('===> Training set, query number:', len(train_dataset.qIdx))
     print('===> Validation set, query number:', len(validation_dataset.qIdx))
@@ -322,10 +250,32 @@ if __name__ == "__main__":
     if opt.resume_path2d:
         not_improved = checkpoint['not_improved']
         best_score = checkpoint['best_score']
+    # save initial weight bachbones
+    if opt.debug:
+        recalls = {1:0.1, 5:0.2, 10:0.5, 20:0.6, 50:0.9}
+        save_checkpoint({
+                    'epoch': 0,
+                    'state_dict': model.state_dict(),
+                    'recalls': recalls,
+                    'best_score': best_score,
+                    'not_improved': not_improved,
+                    'optimizer': optimizer2d.state_dict(),
+                    'parallel': isParallel,
+                }, opt, False, filename='checkpoint_initial.pth.tar')    
+        # save 3d
+        torch.save({
+            'epoch': 0,
+            'state_dict': model3d.state_dict(),
+            'optimizer': optimizer3d.state_dict(),
+        }, opt.save_file_path3d + "/" + "model_initial.ckpt")
     # loop train
     for epoch in trange(opt.start_epoch + 1, opt.nEpochs + 1, desc='Epoch number'.rjust(15), position=0):
-        train_epoch(train_dataset, model, model3d, optimizer2d, optimizer3d, criterion, 
-                    encoder_dim, device, epoch, opt, config, writer)
+        if train_dataset.mining:
+            train_epoch(train_dataset, model, model3d, optimizer2d, optimizer3d, criterion, 
+                        encoder_dim, device, epoch, opt, config, writer)
+        else:
+            train_epoch_no_mining(train_dataset, training_data_loader, model, model3d, optimizer2d, 
+                                  optimizer3d, criterion, epoch, config, writer)
         # 2d model learning rate decay is based on epoch number
         if scheduler is not None:
             #scheduler.step(epoch) may be the epoch will be deprecated in the future?
@@ -337,9 +287,7 @@ if __name__ == "__main__":
         # validation
         if (epoch % int(config['train']['eval_every'])) == 0:
             print("Validation begins at epoch: ", epoch)
-            recalls = val(validation_dataset, model, model3d, 
-                          encoder_dim, device, opt.threads, config, writer, epoch,
-                          write_tboard=True, pbar_position=1)
+            recalls = val(validation_dataset, model, model3d, device, opt.threads, config, writer, epoch, write_tboard=True, pbar_position=1)
             is_best = recalls[5] > best_score
             if is_best:
                 not_improved = 0

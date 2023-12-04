@@ -60,7 +60,7 @@ def pair_check(network, image_file, pc_file, save_path, resume_path2d, resume_pa
     # mandatory in cuda
     device = torch.device("cuda")
     config = {'network': 'spherical', 'num_clusters': 64, 'pooling': 'netvlad', 'vladv2': False}
-    config['train'] = {'cachebatchsize': 10}   
+    config['train'] = {'batchsize': 10}   
     # model construction  
     if network == 'spherical':
         encoder = sphere_resnet18(pretrained=True)

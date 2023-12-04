@@ -66,6 +66,6 @@ def tsne_visualization(path:str, name:str, feat):
     plt.ylim(-50,50) 
     cbar = plt.colorbar() #ticks=range(N)
     cbar.set_label(label='color bar', fontdict=font)
-    plt.title("t-SNE visualization on " + name, fontdict=font)
+    plt.title("Feature visualization of " + name + " based on t-SNE.", fontdict=font)
     plt.tight_layout()
     plt.savefig(path + "/" + name + ".png")

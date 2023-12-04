@@ -48,10 +48,10 @@ def val(eval_set, model, model3d, encoder_dim, device, opt, config, writer, epoc
     # eval_set_dbs = ImagesFromList(eval_set.dbImages, transform=input_transform())
     eval_set_dbs = PcFromFiles(eval_set.dbPcs)
     test_data_loader_queries = DataLoader(dataset=eval_set_queries,
-                                          num_workers=opt.threads, batch_size=int(config['train']['cachebatchsize']),
+                                          num_workers=opt.threads, batch_size=int(config['train']['batchsize']),
                                           shuffle=False, pin_memory=cuda)
     test_data_loader_dbs = DataLoader(dataset=eval_set_dbs,
-                                      num_workers=opt.threads, batch_size=int(config['train']['cachebatchsize']),
+                                      num_workers=opt.threads, batch_size=int(config['train']['batchsize']),
                                       shuffle=False, pin_memory=cuda)
 
     model.eval()

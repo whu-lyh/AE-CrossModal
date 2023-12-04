@@ -14,28 +14,29 @@ from crossmodal.models.models_generic import get_backend, get_model
 import model3d.PointNetVlad as PNV
 from sphereModel.sphereresnet import sphere_resnet18
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d, attention=True, patchnv=False, debug=False):
     # mandatory in cuda
     device = torch.device("cuda")
     config = {'network': 'spherical', 'num_clusters': 64, 'pooling': 'netvlad', 'vladv2': False}
-    config['train'] = {'cachebatchsize': 40, 'batchsize': 10}
-    config['global_params'] = {'threads': 0}
+    # for evaluation, batch size could be 80 at 24GB GPU
+    config['train'] = {'cachebatchsize': 40, 'batchsize': 40}
+    config['global_params'] = {'threads': 8}
     if not os.path.exists(opt.resume_path2d) or not os.path.exists(opt.resume_path3d):
         print("Dummy prediction test")
         validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), batch_size=config['train']['cachebatchsize'], threads=8, posDistThr=20)
-        recalls = val(validation_dataset, model2d=None, model3d=None, batch_size=config['train']['batchsize'], threads=config['global_params']['threads'], result_path=save_path, pbar_position=1)
+        recalls = val(validation_dataset, model2d=None, model3d=None, batch_size=config['train']['batchsize'], device=device, threads=config['global_params']['threads'], result_path=save_path, pbar_position=1)
         return
     # model construction  
     if network == 'spherical':
-        encoder = sphere_resnet18(pretrained=True)
+        encoder = sphere_resnet18(pretrained=False)
         encoder_dim = 512
         # encoder_dim, encoder = get_spherical_cnn(network='original')  # TODO: freeze pretrained
     elif network == 'resnet':
         encoder_dim, encoder = get_backend(net='resnet')  # resnet
     elif network == 'vgg':
-        encoder_dim, encoder = get_backend(net='vgg', pre=True)  # resnet
+        encoder_dim, encoder = get_backend(net='vgg', pre=False)  # resnet
     else:
         raise ValueError('Unknown cnn network')   
     if patchnv:
@@ -70,24 +71,23 @@ def evaluate(network, dataset_root_dir, save_path, resume_path2d, resume_path3d,
         #     print(name, '      ', param.size())  
     if torch.cuda.device_count() > 1:
         model2d = nn.DataParallel(model2d).cuda()
-    model2d.state_dict = checkpoint
-    print(model2d)
-    #model2d.load_state_dict(checkpoint)
+    model2d.load_state_dict(checkpoint['state_dict'])
     if debug:
         print("pre_model2d")
         print(model2d)
+    if torch.cuda.device_count() > 1:
+        model3d = nn.DataParallel(model3d).cuda()
     model3d.load_state_dict(checkpoint3d['state_dict'])
     if debug:
         print("pre_model3d")
         print(model3d) 
     model2d = model2d.to(device)
     model3d = model3d.to(device)
-    # for evaluation, batch size could be 80 at 24GB GPU
     # the batch_size, thread and other settings are designed for hardest sampling mining
     validation_dataset = MSLS(dataset_root_dir, mode='val', transform=input_transform(train=False), 
                               batch_size=config['train']['cachebatchsize'], posDistThr=20)
     val(validation_dataset, model2d, model3d, batch_size=config['train']['batchsize'], threads=config['global_params']['threads'], 
-        result_path=save_path, faiss_gpu=True, save_fig=False, pbar_position=1, debug=debug)
+        result_path=save_path, device=device, faiss_gpu=True if device=="cuda" else False, save_fig=False, pbar_position=1, debug=debug)
         
 
 if __name__ == "__main__":

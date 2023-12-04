@@ -9,15 +9,10 @@ from mycode.msls import PcFromFiles
 from crossmodal.tools.datasets import input_transform
 
 
-def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, writer, 
-        epoch_num=0, write_tboard=True, pbar_position=0):
+def val(eval_dataset, model2d, model3d, device, threads, config, writer, epoch_num=0, write_tboard=True, pbar_position=0):
     '''
         Validation function while training
     '''
-    if device.type == 'cuda':
-        cuda = True
-    else:
-        cuda = False
     # fetch validation datasets
     eval_dataset_queries = ImagesFromList(eval_dataset.qImages, transform=input_transform(train=False))
     eval_dataset_dbs = ImagesFromList(eval_dataset.dbImages, transform=input_transform(train=False))
@@ -26,20 +21,20 @@ def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, wr
     # dataloader
     test_data_loader_queries = DataLoader(dataset=eval_dataset_queries,
                                             num_workers=threads, 
-                                            batch_size=int(config['train']['cachebatchsize']), persistent_workers=True,
-                                            shuffle=False, pin_memory=cuda)
+                                            batch_size=max(int(config['train']['batchsize']), 40), persistent_workers=True,
+                                            shuffle=False, pin_memory=True)
     test_data_loader_dbs = DataLoader(dataset=eval_dataset_dbs,
                                         num_workers=threads, 
-                                        batch_size=int(config['train']['cachebatchsize']), persistent_workers=True,
-                                        shuffle=False, pin_memory=cuda)
+                                        batch_size=max(int(config['train']['batchsize']), 40), persistent_workers=True,
+                                        shuffle=False, pin_memory=True)
     test_data_loader_queries_pc = DataLoader(dataset=eval_dataset_queries_pc,
                                                 num_workers=threads, 
-                                                batch_size=int(config['train']['cachebatchsize']), persistent_workers=True, 
-                                                shuffle=False, pin_memory=cuda)
+                                                batch_size=max(int(config['train']['batchsize']), 40), persistent_workers=True, 
+                                                shuffle=False, pin_memory=True)
     test_data_loader_dbs_pc = DataLoader(dataset=eval_dataset_dbs_pc,
                                             num_workers=threads, 
-                                            batch_size=int(config['train']['cachebatchsize']), persistent_workers=True,
-                                            shuffle=False, pin_memory=cuda)
+                                            batch_size=max(int(config['train']['batchsize']), 40), persistent_workers=True,
+                                            shuffle=False, pin_memory=True)
     # model freeze BN and dropout while validation
     model2d.eval()
     model3d.eval()
@@ -66,9 +61,9 @@ def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, wr
         for feat, test_data_loader in zip([qFeat_pc, dbFeat_pc], [test_data_loader_queries_pc, test_data_loader_dbs_pc]):
             for iteration, (input_data, indices) in \
                     enumerate(tqdm(test_data_loader, position=pbar_position, leave=False, desc='Database(pc) feature generation iter'.rjust(15)), 1):
-                input_data = input_data.float()
-                input_data = input_data.view((-1, 1, 4096, 3))
-                input_data = input_data.to(device)
+                # input_data = input_data.float()
+                input_data = input_data.view((-1, 1, 4096, 3)).to(device)
+                # input_data = input_data.to(device)
                 vlad_encoding = model3d(input_data)
                 feat[indices.detach().numpy(), :] = vlad_encoding.detach().cpu().numpy()
                 # release memory
@@ -80,7 +75,7 @@ def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, wr
     faiss_index = faiss.IndexFlatL2(global_feature_dim)
     faiss_index.add(dbFeat_pc)
     tqdm.write('====> Calculating recall @ N')
-    n_values = [1, 5, 10, 20, 50]
+    n_values = [1, 5, 10, 20, 25]
     # for each query get those within threshold distance
     # The gt indices are found by knn from database images
     gt = eval_dataset.all_pos_indices
@@ -122,10 +117,10 @@ def val(eval_dataset, model2d, model3d, encoder_dim, device, threads, config, wr
             qEndPosTot += qEndPos
             dbEndPosTot += dbEndPos
     # fetch the first 50 prediction results
-    predictions[0] = [list(pre[:50]) for pre in predictions_t[0]] # 2d->2d
-    predictions[1] = [list(pre[:50]) for pre in predictions_t[1]] # 2d->3d
-    predictions[2] = [list(pre[:50]) for pre in predictions_t[2]] # 3d->2d
-    predictions[3] = [list(pre[:50]) for pre in predictions_t[3]] # 3d->3d
+    predictions[0] = [list(pre[:25]) for pre in predictions_t[0]] # 2d->2d
+    predictions[1] = [list(pre[:25]) for pre in predictions_t[1]] # 2d->3d
+    predictions[2] = [list(pre[:25]) for pre in predictions_t[2]] # 3d->2d
+    predictions[3] = [list(pre[:25]) for pre in predictions_t[3]] # 3d->3d
     # result check compared with GT files
     recall_at_n = {}
     for test_index in range(4):
