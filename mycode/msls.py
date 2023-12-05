@@ -15,12 +15,15 @@ import re
 from mycode.loading_pointclouds import load_pc_file, load_pc_files
 import random
 
-path_to_3d = "/data/kitti360_pc"
+path_to_3d = "/lyh/KITTI360"
 default_cities = {
-    'train': ["s00", "s02", "s04", "s05", "s06", "s07" , "s09", "s10"],
-    'val': ["s00"],
+    'train': ["0", "2", "4", "5", "6", "7", "9", "10"],
+    # 'train': ["0", "2", "4", "5", "6"],
+    'val': ["0"],
+    # 'train': ["3"],
+    # 'val': ["3"],
     'test': []
-} #
+}
 #
 # record train1:'train': ["s00","s02"],
 #   'val': ["s06"],
@@ -124,9 +127,12 @@ class MSLS(Dataset):
 
         # load data
         for city in self.cities:
+            city='2013_05_28_drive_%04d_sync' % int(city)
             print("=====> {}".format(city))
 
-            subdir = 'train_val'
+            # subdir = 'train_val'
+            subdir_img = 'data_2d_pano_512_1024'
+            subdir_submap = 'data_3d_submap'
             # subdir_3d =
 
             # get len of images from cities so far for indexing
@@ -140,19 +146,23 @@ class MSLS(Dataset):
                 #     city_2d = 's05'
                 # load query data
                 if self.mode == 'val':
-                    qData = pd.read_csv(join(root_dir, subdir, city, 'database', 'test', 'query.csv'), index_col=0)
+                    # qData = pd.read_csv(join(root_dir, subdir, city, 'database', 'test', 'query.csv'), index_col=0)
+                    qData = pd.read_csv(join(root_dir, subdir_img, city, 'query_val.csv'), index_col=0)
                     # qData_pc = pd.read_csv(join(path_to_3d, subdir_3d, city, 'database', 'postprocessed.csv'), index_col=0)
                     # qDataRaw = pd.read_csv(join(root_dir, subdir, city, 'query', 'raw.csv'), index_col=0)
 
                     # load database data
-                    dbData = pd.read_csv(join(root_dir, subdir, city, 'database', 'test', 'database.csv'), index_col=0)
+                    # dbData = pd.read_csv(join(root_dir, subdir, city, 'database', 'test', 'database.csv'), index_col=0)
+                    dbData = pd.read_csv(join(root_dir, subdir_img, city, 'database_val.csv'), index_col=0)
                 else:
-                    qData = pd.read_csv(join(root_dir, subdir, city, 'database', 'query.csv'), index_col=0)
+                    # qData = pd.read_csv(join(root_dir, subdir, city, 'database', 'query.csv'), index_col=0)
+                    qData = pd.read_csv(join(root_dir, subdir_img, city, 'query.csv'), index_col=0)
                     # qData_pc = pd.read_csv(join(path_to_3d, subdir_3d, city, 'database', 'postprocessed.csv'), index_col=0)
                     # qDataRaw = pd.read_csv(join(root_dir, subdir, city, 'query', 'raw.csv'), index_col=0)
 
                     # load database data
-                    dbData = pd.read_csv(join(root_dir, subdir, city, 'database', 'database.csv'), index_col=0)
+                    # dbData = pd.read_csv(join(root_dir, subdir, city, 'database', 'database.csv'), index_col=0)
+                    dbData = pd.read_csv(join(root_dir, subdir_img, city, 'database.csv'), index_col=0)
                     # dbData_pc = pd.read_csv(join(path_to_3d, subdir_3d, city, 'database', 'postprocessed.csv'), index_col=0)
                     # dbDataRaw = pd.read_csv(join(root_dir, subdir, city, 'database', 'raw.csv'), index_col=0)
                     # print("dbData:")
@@ -161,11 +171,17 @@ class MSLS(Dataset):
                 # arange based on task
                 # qSeqKeys, qSeqIdxs = self.arange_as_seq(qData, join(root_dir, subdir, city, 'query'),  False)
                 # qSeqKeys_pc, qSeqIdxs_pc = self.arange_as_seq(qData_pc, join(path_to_3d, subdir_3d, city, 'query'), False)
-                qSeqKeys, qSeqIdxs, qSeqKeys_pc, qSeqIdxs_pc = \
-                    self.arange_as_seq(qData, join(root_dir, subdir, city, 'database'),join(path_to_3d, city))
+                # qSeqKeys, qSeqIdxs, qSeqKeys_pc, qSeqIdxs_pc = \
+                #     self.arange_as_seq(qData, join(root_dir, subdir, city, 'database'),join(path_to_3d, city))
+                qSeqIdxs, qSeqKeys, qSeqKeys_pc = self.arange_as_seq(qData, 
+                                                                    join(root_dir, subdir_img, city), 
+                                                                    join(root_dir, subdir_submap, city))
 
-                dbSeqKeys, dbSeqIdxs, dbSeqKeys_pc, dbSeqIdxs_pc= \
-                    self.arange_as_seq(dbData, join(root_dir, subdir, city, 'database'),join(path_to_3d, city))
+                # dbSeqKeys, dbSeqIdxs, dbSeqKeys_pc, dbSeqIdxs_pc= \
+                #     self.arange_as_seq(dbData, join(root_dir, subdir, city, 'database'),join(path_to_3d, city))
+                dbSeqIdxs, dbSeqKeys, dbSeqKeys_pc = self.arange_as_seq(dbData, 
+                                                                    join(root_dir, subdir_img, city), 
+                                                                    join(root_dir, subdir_submap, city))
 
 
                 # if there are no query/dabase images,
@@ -187,8 +203,8 @@ class MSLS(Dataset):
                 print(self.dbEndPosList)
 
                 # utm coordinates
-                utmQ = qData[['easting', 'northing']].values.reshape(-1, 2)
-                utmDb = dbData[['easting', 'northing']].values.reshape(-1, 2)
+                utmQ = qData[['east', 'north']].values.reshape(-1, 2)
+                utmDb = dbData[['east', 'north']].values.reshape(-1, 2)
 
 
                 # find positive images for training
@@ -226,17 +242,28 @@ class MSLS(Dataset):
                             self.nonNegIdx.append(n_seq_idx + _lenDb)
 
             elif self.mode in ['test']:
-                qData = pd.read_csv(join(root_dir, subdir, city, 'database', 'query.csv'), index_col=0)
+                # qData = pd.read_csv(join(root_dir, subdir, city, 'database', 'query.csv'), index_col=0)
+                # # load database data
+                # dbData = pd.read_csv(join(root_dir, subdir, city, 'database', 'database.csv'), index_col=0)
+
+                # qSeqKeys, qSeqIdxs, qSeqKeys_pc, qSeqIdxs_pc = \
+                #     self.arange_as_seq(qData, join(root_dir, subdir, city, 'database'),
+                #                        join(path_to_3d, city))
+
+                # dbSeqKeys, dbSeqIdxs, dbSeqKeys_pc, dbSeqIdxs_pc = \
+                #     self.arange_as_seq(dbData, join(root_dir, subdir, city, 'database'),
+                #                        join(path_to_3d, city))
+                qData = pd.read_csv(join(root_dir, subdir_img, city, 'query.csv'), index_col=0)
                 # load database data
-                dbData = pd.read_csv(join(root_dir, subdir, city, 'database', 'database.csv'), index_col=0)
-
-                qSeqKeys, qSeqIdxs, qSeqKeys_pc, qSeqIdxs_pc = \
-                    self.arange_as_seq(qData, join(root_dir, subdir, city, 'database'),
-                                       join(path_to_3d, city))
-
-                dbSeqKeys, dbSeqIdxs, dbSeqKeys_pc, dbSeqIdxs_pc = \
-                    self.arange_as_seq(dbData, join(root_dir, subdir, city, 'database'),
-                                       join(path_to_3d, city))
+                dbData = pd.read_csv(join(root_dir, subdir_img, city, 'database.csv'), index_col=0)
+                # fetch query data, specifically data path
+                qSeqIdxs, qSeqKeys, qSeqKeys_pc = self.arange_as_seq(qData, 
+                                                                    join(root_dir, subdir_img, city),
+                                                                    join(root_dir, subdir_submap, city))
+                # load database data
+                dbSeqIdxs, dbSeqKeys, dbSeqKeys_pc= self.arange_as_seq(dbData, 
+                                                                    join(root_dir, subdir_img, city),
+                                                                    join(root_dir, subdir_submap, city))
 
                 self.qImages.extend(qSeqKeys)
                 self.dbImages.extend(dbSeqKeys)
@@ -251,8 +278,8 @@ class MSLS(Dataset):
 
         # cast to np.arrays for indexing during training
         self.qIdx = np.asarray(self.qIdx)
-        self.pIdx = np.asarray(self.pIdx)
-        self.nonNegIdx = np.asarray(self.nonNegIdx)
+        self.pIdx = np.asarray(self.pIdx, dtype=object)
+        self.nonNegIdx = np.asarray(self.nonNegIdx, dtype=object)
 
         self.qImages = np.asarray(self.qImages)
         self.qPcs = np.asarray(self.qPcs)
@@ -263,20 +290,20 @@ class MSLS(Dataset):
         self.threads = threads
         self.bs = bs
 
-        print('self.qImages')
-        print(self.qImages)
-        print('self.dbImages')
-        print(self.dbImages)
-        print('self.qPcs')
-        print(self.qPcs)
-        print('self.qIdx')
-        print(self.qIdx)
-        print('self.pIdx')
-        print(self.pIdx)
-        print('len(self.qIdx)')
-        print(len(self.qIdx))
-        print('len(self.pIdx)')
-        print(len(self.pIdx))
+        # print('self.qImages')
+        # print(self.qImages)
+        # print('self.dbImages')
+        # print(self.dbImages)
+        # print('self.qPcs')
+        # print(self.qPcs)
+        # print('self.qIdx')
+        # print(self.qIdx)
+        # print('self.pIdx')
+        # print(self.pIdx)
+        # print('len(self.qIdx)')
+        # print(len(self.qIdx))
+        # print('len(self.pIdx)')
+        # print(len(self.pIdx))
 
     @staticmethod
     def arange_as_seq(data, path, path_pc):
@@ -296,16 +323,18 @@ class MSLS(Dataset):
             # row_index = data_pc[data_pc.key == img_num].index.tolist()[0]
             # print(row_index)
             # seq_key = ','.join([join(path, 'images', seq['key'] + '.png')])
-            seq_key = join(path, 'images', seq['key'] + '.png')
-            # seq_key_pc = ','.join([join(path_pc, 'pc', '%010d' % img_num + '.bin')])
-            seq_key_pc = join(path_pc, 'pc', '%010d' % img_num + '.bin')
+            # seq_key = join(path, 'images', seq['key'] + '.png')
+            # # seq_key_pc = ','.join([join(path_pc, 'pc', '%010d' % img_num + '.bin')])
+            # seq_key_pc = join(path_pc, 'pc', '%010d' % img_num + '.bin')
+            seq_key = join(path, 'pano', 'data_rgb', '%010d' % img_num + '.png')
+            seq_key_pc = join(path_pc, 'submaps', '%010d' % img_num + '.bin')
 
             seq_keys.append(seq_key)
             seq_keys_pc.append(seq_key_pc)
             seq_idxs.append([seq_idx])
             seq_idxs_pc.append([seq_idx])
 
-        return seq_keys, np.asarray(seq_idxs), seq_keys_pc, np.asarray(seq_idxs_pc)
+        return np.asarray(seq_idxs), seq_keys, seq_keys_pc#, np.asarray(seq_idxs_pc)
 
 
     def __len__(self):

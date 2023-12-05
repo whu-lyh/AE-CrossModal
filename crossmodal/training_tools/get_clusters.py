@@ -39,7 +39,7 @@ import faiss
 import numpy as np
 from torch.utils.data import DataLoader, SubsetRandomSampler
 from tqdm.auto import tqdm
-from crossmodal.training_tools.msls import ImagesFromList
+from mycode.msls import ImagesFromList
 from crossmodal.tools.datasets import input_transform
 
 

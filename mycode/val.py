@@ -145,8 +145,8 @@ def val(eval_set, model, model3d, encoder_dim, device, threads, config, writer, 
             dbEndPosTot += dbEndPos
     # get rid of the same frame of query and database for same modality
     # predictions = predictions_t
-    predictions[0] = [list(pre[1:]) for pre in predictions_t[0]]
-    predictions[3] = [list(pre[1:]) for pre in predictions_t[3]]
+    predictions[0] = [list(pre[0:]) for pre in predictions_t[0]]
+    predictions[3] = [list(pre[0:]) for pre in predictions_t[3]]
     predictions[1] = [list(pre[:50]) for pre in predictions_t[1]]
     predictions[2] = [list(pre[:50]) for pre in predictions_t[2]]
     for i in range(4):

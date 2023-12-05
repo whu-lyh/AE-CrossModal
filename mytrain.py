@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import h5py
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 from tqdm.auto import trange
 
@@ -58,9 +58,9 @@ if __name__ == "__main__":
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='manual epoch number (useful on restarts)')
     parser.add_argument('--save_every_epoch', action='store_true', help='Flag to set a separate checkpoint file for each new epoch')
-    parser.add_argument('--threads', type=int, default=6, help='Number of threads for each data loader to use')
+    parser.add_argument('--threads', type=int, default=16, help='Number of threads for each data loader to use')
     parser.add_argument('--nocuda', action='store_true', help='If true, use CPU only. Else use GPU.')
-    parser.add_argument('--network', type=str, default='vgg', help='2D CNN network, e.g. vgg')
+    parser.add_argument('--network', type=str, default='spherical', help='2D CNN network, e.g. vgg')
     parser.add_argument('--pretrained_cnn_network', type=bool, default=True, help='whether use pretrained 2D CNN network ')
 
     opt = parser.parse_args()
@@ -165,8 +165,8 @@ if __name__ == "__main__":
             traindescs = h5.get("descriptors")[...]
             model.pool.init_params(clsts, traindescs)
             del clsts, traindescs
-    print('model')
-    print(model)
+    # print('model')
+    # print(model)
     isParallel = False
     '''if int(config['global_params']['nGPU']) > 1 and torch.cuda.device_count() > 1:
         model.encoder = nn.DataParallel(model.encoder)
