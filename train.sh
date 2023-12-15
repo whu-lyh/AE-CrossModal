@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 ############################## with h5 cache
-python mytrain.py --thread 16 \
+python mytrain.py --thread 8 \
         --network spherical \
-        --id scratch_train_same_as_baseline \
+        --id spherical_all_same \
         --attention \
         --pretrained_cnn_network=True\
-        --dataset_root_dir /root/public/data/Kitti/kitti360 \
-        --cache_path /root/lyh/data_lyh/kitti360/cache \
-        --save_path /root/lyh/code/AE-CrossModal/log/checkpoints \
-        --cluster_path /root/lyh/data_lyh/kitti360/cache/centroids/spherical_20m_KITTI360_64_desc_cen.hdf5
+        --dataset_root_dir /lyh/KITTI360 \
+        --cache_path /lyh/KITTI360/cache \
+        --save_path /workspace/AE-CrossModal/log/checkpoints \
+        --cluster_path /lyh/KITTI360/cache/centroids/spherical_20m_KITTI360_64_desc_cen.hdf5
 
 ############################## 1080Ti
 #python mytrain.py --thread 0 \

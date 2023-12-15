@@ -33,9 +33,9 @@ from sphereModel.sphereresnet import (sphere_resnet18, sphere_resnet34,
                                       sphere_resnet50)
 
 # single GPU
-# os.environ['CUDA_VISIBLE_DEVICES'] = "0"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 # multi GPUs
-os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
+# os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
 
 def get_learning_rate(epoch):
     

@@ -63,6 +63,8 @@ def train_iteration(train_dataset, training_data_loader, startIter, model2d, mod
         loss_2dto2d = 0
         loss_3dto3d = 0
         # negCounts is the number of negative samples, all negatives will participate the loss calculation
+        # infact there is not necessary to calculate the loss seperately
+        # the TripletMarginLoss support batch operation
         for i, negCount in enumerate(negCounts):
             # feature distance between query and database
             loss_je += pdist(global_feat_img_query[i: i + 1] , global_feat_pc_query[i: i + 1])
