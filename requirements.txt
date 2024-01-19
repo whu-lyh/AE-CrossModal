@@ -1,0 +1,14 @@
+numpy
+pandas
+scikit-learn
+torch
+pytorch-metric-learning
+tqdm
+argparse
+configparser
+shutilwhich
+h5py
+faiss-gpu
+prettytable
+matplotlib
+tensorboard

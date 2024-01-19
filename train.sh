@@ -1,0 +1,1 @@
+python mytrain.py --network spherical --id baseline --pretrained_cnn_network=True --dataset_root_dir /public/KITTI360 --cache_path /workspace/WorkSpacePR/AE-CrossModal/cache --save_path /workspace/WorkSpacePR/AE-CrossModal/log/checkpoints
