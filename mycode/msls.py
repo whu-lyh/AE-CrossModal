@@ -17,8 +17,8 @@ import random
 
 path_to_3d = "/lyh/KITTI360"
 default_cities = {
-    'train': ["0", "2", "4", "5", "6", "7", "9", "10"],
-    # 'train': ["0", "2", "4", "5", "6"],
+    # 'train': ["0", "2", "4", "5", "6", "7", "9", "10"],
+    'train': ["0"],
     'val': ["0"],
     # 'train': ["3"],
     # 'val': ["3"],
@@ -132,7 +132,7 @@ class MSLS(Dataset):
 
             # subdir = 'train_val'
             subdir_img = 'data_2d_pano_512_1024'
-            subdir_submap = 'data_3d_submap'
+            subdir_submap = 'data_3d_submap_raw'
             # subdir_3d =
 
             # get len of images from cities so far for indexing

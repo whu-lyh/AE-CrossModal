@@ -58,7 +58,7 @@ if __name__ == "__main__":
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='manual epoch number (useful on restarts)')
     parser.add_argument('--save_every_epoch', action='store_true', help='Flag to set a separate checkpoint file for each new epoch')
-    parser.add_argument('--threads', type=int, default=16, help='Number of threads for each data loader to use')
+    parser.add_argument('--threads', type=int, default=8, help='Number of threads for each data loader to use')
     parser.add_argument('--nocuda', action='store_true', help='If true, use CPU only. Else use GPU.')
     parser.add_argument('--network', type=str, default='spherical', help='2D CNN network, e.g. vgg')
     parser.add_argument('--pretrained_cnn_network', type=bool, default=True, help='whether use pretrained 2D CNN network ')
@@ -68,11 +68,12 @@ if __name__ == "__main__":
     print('os.environ[CUDA_VISIBLE_DEVICES]')
     print(os.environ['CUDA_VISIBLE_DEVICES'])
     size = 512
-    attention = False
+    attention = True
     print('size')
     print(size)
     print('attention')
     print(attention)
+    print('network')
     print(opt.network)
 
     configfile = opt.config_path
@@ -205,8 +206,8 @@ if __name__ == "__main__":
         model3d.attention.init_weights()
     else:
         model3d = PNV.PointNetVlad(global_feat=True, feature_transform=True, max_pool=False, output_dim=256, num_points=4096)
-    print('model3d')
-    print(model3d)
+    # print('model3d')
+    # print(model3d)
     model3d = model3d.to(device)
 
     parameters3d = filter(lambda p: p.requires_grad, model3d.parameters())
