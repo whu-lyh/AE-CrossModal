@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-############################## with h5 cache
-python mytrain.py --thread 8 \
+############################## with h5 cache will generated each time
+python mytrain.py --thread 12 \
         --network spherical \
-        --id spherical_all_same \
+        --id baseline_refactor \
         --attention \
-        --pretrained_cnn_network=True\
-        --dataset_root_dir /lyh/KITTI360 \
-        --cache_path /lyh/KITTI360/cache \
-        --save_path /workspace/AE-CrossModal/log/checkpoints \
-        --cluster_path /lyh/KITTI360/cache/centroids/spherical_20m_KITTI360_64_desc_cen.hdf5
+        --pretrained_cnn_network=True \
+        --dataset_root_dir /public/KITTI360 \
+        --cache_path /workspace/WorkSpacePR/AE-CrossModal/cache \
+        --save_path /workspace/WorkSpacePR/AE-CrossModal/log/checkpoints
 
 ############################## 1080Ti
 #python mytrain.py --thread 0 \

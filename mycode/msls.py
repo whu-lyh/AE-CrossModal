@@ -18,11 +18,12 @@ import random
 # 03 is too short to find triplets
 default_cities = {
     # 'train': ["0", "3", "2", "4", "5", "6", "7", "9", "10"],
-    'train': ["0", "2", "4", "5", "6"],
+    # 'train': ["0"],
+    'train': ["3"],
     'val': ["0"],
     # 'train': ["3"],
     # 'val': ["3"],
-    'test': []
+    'test': ["3"]
 }
 
 
@@ -105,7 +106,7 @@ class MSLS(Dataset):
             city='2013_05_28_drive_%04d_sync' % int(city_idx)
             print("=====> {}".format(city))
             subdir_img = 'data_2d_pano_512_1024'
-            subdir_submap = 'data_3d_submap'
+            subdir_submap = 'data_3d_submap_raw'
             # get len of images from cities so far for global indexing
             _lenQ = len(self.qImages)
             _lenDb = len(self.dbImages)
@@ -200,12 +201,12 @@ class MSLS(Dataset):
             print("Try more sequences")
             sys.exit()
         # cast to np.arrays for indexing during training
-        self.qIdx = np.asarray(self.qIdx)
-        self.pIdx = np.asarray(self.pIdx)
-        self.nonNegIdx = np.asarray(self.nonNegIdx)
-        # self.qIdx = np.asarray(self.qIdx,dtype=object) # might have some wired bugs, warning is acceptable
-        # self.pIdx = np.asarray(self.pIdx,dtype=object)
-        # self.nonNegIdx = np.asarray(self.nonNegIdx,dtype=object)
+        # self.qIdx = np.asarray(self.qIdx)
+        # self.pIdx = np.asarray(self.pIdx)
+        # self.nonNegIdx = np.asarray(self.nonNegIdx)
+        self.qIdx = np.asarray(self.qIdx, dtype=object) # might have some wired bugs, warning is acceptable
+        self.pIdx = np.asarray(self.pIdx, dtype=object)
+        self.nonNegIdx = np.asarray(self.nonNegIdx, dtype=object)
         # here only data path is stored
         self.qImages = np.asarray(self.qImages)
         self.qPcs = np.asarray(self.qPcs)
@@ -221,7 +222,7 @@ class MSLS(Dataset):
     def arange_as_seq(data, path_img, path_pc):
         '''
             arrange all query data(images, submaps) into list container
-            Return：
+            Return:
                 idx in csv file, image path, and pc full path in list container
         '''
         seq_keys, seq_idxs, seq_keys_pc = [], [], []

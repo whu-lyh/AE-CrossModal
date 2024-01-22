@@ -14,7 +14,7 @@ debug = False
 def train_iteration(train_dataset, training_data_loader, startIter, model2d, model3d, criterion, optimizer, optimizer3d, epoch_loss, epoch_num, nBatches, writer):
     # accumulate the loss, making sure the loss is stable at smaller batch_size(e.g. 2)
     # this operation makes the batch size equals to accum_steps times of the raw value
-    accum_steps = 16
+    accum_steps = 64
     # calculate loss per query triplet in batch
     for iteration, (query, query_pc, positives, positives_pc, negatives, negatives_pcs, negCounts, indices) in \
             enumerate(tqdm(training_data_loader, position=2, leave=False, desc='Train Iter'.rjust(15)), startIter):
@@ -124,6 +124,7 @@ def train_iteration(train_dataset, training_data_loader, startIter, model2d, mod
             #tqdm.write("GPU Allocated:\t", humanbytes(torch.cuda.memory_allocated()))
             #tqdm.write("GPU Cached:\t", humanbytes(torch.cuda.memory_reserved()))
         del loss
+    return epoch_loss
 
 
 def train_epoch(train_dataset, model2d, model3d, optimizer, optimizer3d, criterion, encoder_dim, device, epoch_num, opt, config, writer):
@@ -143,9 +144,9 @@ def train_epoch(train_dataset, model2d, model3d, optimizer, optimizer3d, criteri
     tqdm.write('Number of triplets:\t' + str(nBatches * int(config['train']['batchsize'])))
     if not train_dataset.mining:
         training_data_loader = DataLoader(dataset=train_dataset, num_workers=opt.threads,
-                                            batch_size=int(config['train']['batchsize']), shuffle=True, persistent_workers=True,
+                                            batch_size=int(config['train']['batchsize']), shuffle=True, persistent_workers=True, prefetch_factor=int(opt.threads/2),
                                             collate_fn=MSLS.collate_fn, pin_memory=cuda)
-        train_iteration(train_dataset, training_data_loader, startIter, model2d, model3d, criterion, optimizer, optimizer3d, epoch_loss, epoch_num, nBatches, writer)
+        epoch_loss += train_iteration(train_dataset, training_data_loader, startIter, model2d, model3d, criterion, optimizer, optimizer3d, epoch_loss, epoch_num, nBatches, writer)
         del training_data_loader
         optimizer.zero_grad()
         optimizer3d.zero_grad()
@@ -168,10 +169,10 @@ def train_epoch(train_dataset, model2d, model3d, optimizer, optimizer3d, criteri
             # train_dataset.update_subcache(net=model2d, net3d=model3d, outputdim=pool_global_feature_dim)
             # add train triplet dataset into dataloader, batch triplets will be loaded
             training_data_loader = DataLoader(dataset=train_dataset, num_workers=opt.threads,
-                                            batch_size=int(config['train']['batchsize']), shuffle=True, persistent_workers=True,
+                                            batch_size=int(config['train']['batchsize']), shuffle=True, persistent_workers=True, prefetch_factor=int(opt.threads/2),
                                             collate_fn=MSLS.collate_fn, pin_memory=cuda)
 
-            train_iteration(train_dataset, training_data_loader,startIter, model2d, model3d,criterion,optimizer, optimizer3d, epoch_loss, epoch_num, nBatches, writer)
+            epoch_loss += train_iteration(train_dataset, training_data_loader,startIter, model2d, model3d,criterion,optimizer, optimizer3d, epoch_loss, epoch_num, nBatches, writer)
             # start iteration in whole epoch, increase at batch_size step
             startIter += len(training_data_loader)
             del training_data_loader
@@ -196,7 +197,7 @@ def train_epoch_no_mining(train_dataset, training_data_loader, model2d, model3d,
     startIter = 1  # keep track of batch iter across subsets for logging
     tqdm.write('Number of total batches:\t' + str(nBatches))
     tqdm.write('Number of triplets:\t' + str(nBatches * int(config['train']['batchsize'])))
-    train_iteration(train_dataset, training_data_loader, startIter, model2d, model3d, criterion, optimizer, optimizer3d, epoch_loss, epoch_num, nBatches, writer)
+    epoch_loss = train_iteration(train_dataset, training_data_loader, startIter, model2d, model3d, criterion, optimizer, optimizer3d, epoch_loss, epoch_num, nBatches, writer)
     optimizer.zero_grad()
     optimizer3d.zero_grad()
     torch.cuda.empty_cache()   

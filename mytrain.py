@@ -38,12 +38,39 @@ os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 # os.environ['CUDA_VISIBLE_DEVICES'] = "0,1"
 
 def get_learning_rate(epoch):
-    
-    learning_rate = 0.0001 * ((0.8) ** (epoch // 2))  # 0.00005
+    # decay the lr based on the initial_lr*80% every 2 epochs
+    learning_rate = 0.0001 * ((0.8) ** (epoch // 2))
     # learning_rate = max(learning_rate, 0.00001) * 50  # CLIP THE LEARNING RATE!
     return learning_rate
 
+def get_learning_rate2(scheduler, epoch): 
+    scheduler.step()
+    lr = scheduler.get_last_lr()[0]
+    return lr
+
+def test_scheduler():
+    lr = []
+    for e in range(50):
+        lr.append(get_learning_rate(e))
+    print(lr)
+    print("111111111111111")
+    model = PNV.PointNetVlad_attention(global_feat=True, feature_transform=True, max_pool=False, output_dim=256, num_points=4096)
+    # decay the lr based on the initial_lr*80% every 2 epochs
+    # * the following is set to be same as the custom get_learning_rate() func
+    param_groups = [{'params': model.parameters(), 'lr': 0.0001, 'initial_lr': 0.0001}]
+    optimizer = optim.SGD(param_groups, lr=0.0001)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.8, last_epoch=-2)
+    lr2 = []
+    for e in range(50):
+        lr2.append(get_learning_rate2(scheduler, e))
+    print(lr2)
+
+ 
+if __name__ == "__main1__":
+    test_scheduler()
+
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(description='CrossModal-train')
     parser.add_argument('--config_path', type=str, default='crossmodal/configs/train.ini',
                         help='File name (with extension) to an ini file that stores most of the configuration data')
@@ -111,7 +138,7 @@ if __name__ == "__main__":
     print('whether use pretrained 2D CNN network:\t', opt.pretrained_cnn_network)
     # basic backbone
     if opt.network == 'spherical':
-        encoder = sphere_resnet34(pretrained=pre)
+        encoder = sphere_resnet18(pretrained=pre)
         encoder_dim = 512
     elif opt.network == 'resnet':
         encoder_dim, encoder = get_backend(net='resnet', pre=pre)
@@ -155,7 +182,7 @@ if __name__ == "__main__":
             print('===> Loading dataset(s) for clustering')
             train_dataset = MSLS(opt.dataset_root_dir, mode='train', transform=input_transform(train=False),
                                  batch_size=int(config['train']['cachebatchsize']), threads=opt.threads, margin=float(config['train']['margin']))
-            print(train_dataset)
+            # print(train_dataset)
             model = model.to(device)
             print('===> Calculating descriptors and clusters')
             get_clusters(train_dataset, model, encoder_dim, device, opt, config, initcache)
@@ -284,11 +311,13 @@ if __name__ == "__main__":
         lr_3d = get_learning_rate(epoch)
         parameters3d = filter(lambda p: p.requires_grad, model3d.parameters())
         optimizer3d = optim.Adam(parameters3d, lr_3d)
+        writer.add_scalar('Train/2d_lr', scheduler.get_last_lr()[0], epoch) # get_last_lr will return a list of lr, no matter how many lr there are
+        writer.add_scalar('Train/3d_lr', lr_3d, epoch)
         # validation
         if (epoch % int(config['train']['eval_every'])) == 0:
             print("Validation begins at epoch: ", epoch)
             recalls = val(validation_dataset, model, model3d, device, opt.threads, config, writer, epoch, write_tboard=True, pbar_position=1)
-            is_best = recalls[5] > best_score
+            is_best = recalls[1] > best_score
             if is_best:
                 not_improved = 0
                 best_score = recalls[5]

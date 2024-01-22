@@ -10,3 +10,4 @@ log/
 eval/output_lyh/
 eval/output/*.txt
 eval/*.txt
+cache/
